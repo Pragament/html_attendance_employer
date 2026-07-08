@@ -1,0 +1,1747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Employer · Employee Manager</title>
+
+    <!-- Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js">
+    </script>
+    <!-- BcryptJS for hashing -->
+    <script src="https://cdn.jsdelivr.net/npm/bcryptjs@2.4.3/dist/bcrypt.min.js">
+    </script>
+    <!-- Font Awesome 6 (free) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet" />
+
+    <style>
+        /* ----- RESET & BASE ----- */
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        :root {
+            --primary: #4f46e5;
+            --primary-hover: #4338ca;
+            --primary-light: #eef2ff;
+            --danger: #ef4444;
+            --danger-hover: #dc2626;
+            --success: #22c55e;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-400: #9ca3af;
+            --gray-500: #6b7280;
+            --gray-600: #4b5563;
+            --gray-700: #374151;
+            --gray-800: #1f2937;
+            --gray-900: #111827;
+            --radius: 12px;
+            --shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+            --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.08);
+            --transition: 0.2s ease;
+        }
+        html {
+            font-size: 15px;
+        }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--gray-50);
+            color: var(--gray-900);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        input,
+        select,
+        button {
+            font: inherit;
+        }
+        button {
+            cursor: pointer;
+            border: none;
+            background: none;
+        }
+        a {
+            color: var(--primary);
+            text-decoration: none;
+        }
+        /* ----- APP SHELL ----- */
+        #app {
+            width: 100%;
+            max-width: 1280px;
+            min-height: 90vh;
+            background: #fff;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-lg);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+        /* ----- TOP BAR ----- */
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 28px;
+            background: #fff;
+            border-bottom: 1px solid var(--gray-200);
+            flex-shrink: 0;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .topbar-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 700;
+            font-size: 1.2rem;
+            color: var(--gray-900);
+        }
+        .topbar-brand i {
+            color: var(--primary);
+            font-size: 1.4rem;
+        }
+        .topbar-actions {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .topbar-actions .user-email {
+            font-size: 0.85rem;
+            color: var(--gray-500);
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .btn-logout {
+            padding: 6px 16px;
+            background: var(--gray-100);
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--gray-700);
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-logout:hover {
+            background: var(--gray-200);
+        }
+        /* ----- MAIN CONTENT ----- */
+        .main {
+            flex: 1;
+            padding: 28px 28px 32px;
+            overflow-y: auto;
+        }
+        /* ----- PAGES (show/hide) ----- */
+        .page {
+            display: none;
+            animation: fadeIn 0.25s ease;
+        }
+        .page.active {
+            display: block;
+        }
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(6px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        /* ----- SETTINGS PAGE ----- */
+        .settings-card {
+            max-width: 540px;
+            margin: 40px auto;
+            background: #fff;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius);
+            padding: 36px 40px 40px;
+            box-shadow: var(--shadow);
+        }
+        .settings-card h2 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+        .settings-card p.sub {
+            color: var(--gray-500);
+            font-size: 0.9rem;
+            margin-bottom: 24px;
+        }
+        .form-group {
+            margin-bottom: 18px;
+        }
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            font-size: 0.85rem;
+            margin-bottom: 4px;
+            color: var(--gray-700);
+        }
+        .form-group label .required {
+            color: var(--danger);
+        }
+        .form-control {
+            width: 100%;
+            padding: 10px 14px;
+            border: 1px solid var(--gray-300);
+            border-radius: 8px;
+            background: #fff;
+            transition: var(--transition);
+            font-size: 0.95rem;
+            color: var(--gray-900);
+        }
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+        }
+        .form-control::placeholder {
+            color: var(--gray-400);
+        }
+        .btn-primary {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 24px;
+            background: var(--primary);
+            color: #fff;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            transition: var(--transition);
+            border: 1px solid transparent;
+        }
+        .btn-primary:hover {
+            background: var(--primary-hover);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+        }
+        .btn-primary:disabled {
+            opacity: 0.6;
+            pointer-events: none;
+            transform: none;
+        }
+        .btn-secondary {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: var(--gray-100);
+            color: var(--gray-700);
+            border-radius: 8px;
+            font-weight: 500;
+            font-size: 0.9rem;
+            transition: var(--transition);
+            border: 1px solid var(--gray-200);
+        }
+        .btn-secondary:hover {
+            background: var(--gray-200);
+        }
+        .btn-danger {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: var(--danger);
+            color: #fff;
+            border-radius: 8px;
+            font-weight: 500;
+            font-size: 0.85rem;
+            transition: var(--transition);
+        }
+        .btn-danger:hover {
+            background: var(--danger-hover);
+        }
+        .btn-sm {
+            padding: 5px 12px;
+            font-size: 0.8rem;
+            border-radius: 6px;
+        }
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--gray-300);
+            color: var(--gray-600);
+        }
+        .btn-outline:hover {
+            background: var(--gray-100);
+        }
+        /* ----- LOGIN PAGE ----- */
+        .login-card {
+            max-width: 420px;
+            margin: 60px auto;
+            text-align: center;
+            padding: 48px 40px 52px;
+            background: #fff;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+        }
+        .login-card .logo-icon {
+            font-size: 3rem;
+            color: var(--primary);
+            margin-bottom: 12px;
+        }
+        .login-card h2 {
+            font-size: 1.6rem;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+        .login-card p {
+            color: var(--gray-500);
+            margin-bottom: 28px;
+        }
+        .btn-google {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 32px;
+            background: #fff;
+            border: 1px solid var(--gray-300);
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 1rem;
+            color: var(--gray-700);
+            transition: var(--transition);
+            box-shadow: var(--shadow);
+        }
+        .btn-google:hover {
+            background: var(--gray-50);
+            border-color: var(--gray-400);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+        .btn-google img {
+            width: 22px;
+            height: 22px;
+        }
+        /* ----- ORG LIST ----- */
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .section-header h2 {
+            font-size: 1.4rem;
+            font-weight: 700;
+        }
+        .section-header .subtitle {
+            color: var(--gray-500);
+            font-size: 0.9rem;
+            font-weight: 400;
+        }
+        .org-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 16px;
+        }
+        .org-card {
+            background: #fff;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius);
+            padding: 20px 22px 22px;
+            transition: var(--transition);
+            cursor: pointer;
+            position: relative;
+            box-shadow: var(--shadow);
+        }
+        .org-card:hover {
+            border-color: var(--primary);
+            box-shadow: 0 4px 16px rgba(79, 70, 229, 0.10);
+            transform: translateY(-2px);
+        }
+        .org-card .org-code {
+            font-weight: 700;
+            font-size: 1.3rem;
+            color: var(--primary);
+            letter-spacing: 1px;
+        }
+        .org-card .org-name {
+            font-weight: 600;
+            font-size: 1.05rem;
+            margin-top: 2px;
+            color: var(--gray-800);
+        }
+        .org-card .org-actions {
+            display: flex;
+            gap: 6px;
+            margin-top: 14px;
+            justify-content: flex-end;
+        }
+        .org-card .org-actions button {
+            padding: 4px 10px;
+            font-size: 0.75rem;
+            border-radius: 6px;
+            font-weight: 500;
+            transition: var(--transition);
+        }
+        .org-card .org-actions .btn-edit-org {
+            background: var(--primary-light);
+            color: var(--primary);
+        }
+        .org-card .org-actions .btn-edit-org:hover {
+            background: #dbeafe;
+        }
+        .org-card .org-actions .btn-del-org {
+            background: #fef2f2;
+            color: var(--danger);
+        }
+        .org-card .org-actions .btn-del-org:hover {
+            background: #fee2e2;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 48px 20px;
+            color: var(--gray-500);
+        }
+        .empty-state i {
+            font-size: 2.8rem;
+            color: var(--gray-300);
+            margin-bottom: 12px;
+        }
+        .empty-state p {
+            font-size: 1rem;
+        }
+        /* ----- EMPLOYEE TABLE ----- */
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--gray-500);
+            font-weight: 500;
+            font-size: 0.9rem;
+            margin-bottom: 16px;
+            transition: var(--transition);
+            cursor: pointer;
+            border: none;
+            background: none;
+            padding: 0;
+        }
+        .back-link:hover {
+            color: var(--primary);
+        }
+        .table-wrap {
+            overflow-x: auto;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius);
+            background: #fff;
+            box-shadow: var(--shadow);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+        table th {
+            text-align: left;
+            padding: 14px 18px;
+            background: var(--gray-50);
+            font-weight: 600;
+            color: var(--gray-600);
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            border-bottom: 1px solid var(--gray-200);
+        }
+        table td {
+            padding: 12px 18px;
+            border-bottom: 1px solid var(--gray-100);
+            vertical-align: middle;
+        }
+        table tr:last-child td {
+            border-bottom: none;
+        }
+        table tr:hover td {
+            background: var(--gray-50);
+        }
+        .employee-actions {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .employee-actions button {
+            padding: 4px 10px;
+            font-size: 0.75rem;
+            border-radius: 6px;
+            font-weight: 500;
+            transition: var(--transition);
+        }
+        .btn-edit-emp {
+            background: var(--primary-light);
+            color: var(--primary);
+        }
+        .btn-edit-emp:hover {
+            background: #dbeafe;
+        }
+        .btn-del-emp {
+            background: #fef2f2;
+            color: var(--danger);
+        }
+        .btn-del-emp:hover {
+            background: #fee2e2;
+        }
+        .badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            background: var(--gray-100);
+            color: var(--gray-600);
+        }
+        .badge-role {
+            background: var(--primary-light);
+            color: var(--primary);
+        }
+        .emp-id {
+            font-weight: 600;
+            font-family: 'Inter', monospace;
+            font-size: 0.85rem;
+            color: var(--gray-700);
+        }
+        /* ----- MODAL ----- */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.40);
+            backdrop-filter: blur(4px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 999;
+            padding: 20px;
+            animation: fadeIn 0.2s ease;
+        }
+        .modal-overlay.open {
+            display: flex;
+        }
+        .modal {
+            background: #fff;
+            border-radius: var(--radius);
+            max-width: 540px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            padding: 32px 36px 36px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.20);
+            animation: slideUp 0.25s ease;
+        }
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px) scale(0.98);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+        .modal h3 {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+        .modal .modal-sub {
+            color: var(--gray-500);
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+        }
+        .modal .form-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 22px;
+            padding-top: 16px;
+            border-top: 1px solid var(--gray-200);
+        }
+        .modal .form-actions .btn-secondary {
+            padding: 10px 20px;
+        }
+        .modal .form-actions .btn-primary {
+            padding: 10px 28px;
+        }
+        /* datalist style fallback */
+        input[list]::-webkit-calendar-picker-indicator {
+            opacity: 0.5;
+        }
+        /* ----- RESPONSIVE ----- */
+        @media (max-width: 640px) {
+            body {
+                padding: 10px;
+            }
+            .topbar {
+                padding: 12px 16px;
+            }
+            .main {
+                padding: 16px;
+            }
+            .settings-card {
+                padding: 24px 20px;
+                margin: 20px auto;
+            }
+            .login-card {
+                padding: 32px 20px;
+                margin: 30px auto;
+            }
+            .modal {
+                padding: 24px 18px;
+            }
+            .org-grid {
+                grid-template-columns: 1fr;
+            }
+            table th,
+            table td {
+                padding: 10px 12px;
+                font-size: 0.8rem;
+            }
+            .topbar-actions .user-email {
+                max-width: 120px;
+                font-size: 0.75rem;
+            }
+            .section-header h2 {
+                font-size: 1.2rem;
+            }
+        }
+        /* utilities */
+        .text-center {
+            text-align: center;
+        }
+        .mt-8 {
+            margin-top: 8px;
+        }
+        .mt-16 {
+            margin-top: 16px;
+        }
+        .mb-8 {
+            margin-bottom: 8px;
+        }
+        .gap-8 {
+            gap: 8px;
+        }
+        .flex {
+            display: flex;
+        }
+        .flex-center {
+            align-items: center;
+            justify-content: center;
+        }
+        .w-full {
+            width: 100%;
+        }
+        .text-muted {
+            color: var(--gray-500);
+        }
+        .text-sm {
+            font-size: 0.85rem;
+        }
+        .hidden {
+            display: none !important;
+        }
+        /* loading spinner inline */
+        .spinner {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            border: 2px solid var(--gray-200);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+        .toast-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-width: 380px;
+            width: 100%;
+        }
+        .toast {
+            padding: 14px 20px;
+            background: var(--gray-900);
+            color: #fff;
+            border-radius: 10px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.20);
+            animation: slideUp 0.25s ease;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .toast.success {
+            background: #065f46;
+        }
+        .toast.error {
+            background: #991b1b;
+        }
+        .toast i {
+            font-size: 1.1rem;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="app">
+
+        <!-- ===== TOP BAR ===== -->
+        <header class="topbar" id="topbar" style="display:none;">
+            <div class="topbar-brand">
+                <i class="fas fa-users-cog"></i>
+                <span>EmpManager</span>
+            </div>
+            <div class="topbar-actions">
+                <span class="user-email" id="userEmail"></span>
+                <button class="btn-logout" id="btnLogout">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </button>
+            </div>
+        </header>
+
+        <!-- ===== MAIN ===== -->
+        <div class="main">
+
+            <!-- ========== PAGE: SETTINGS ========== -->
+            <div class="page active" id="pageSettings">
+                <div class="settings-card">
+                    <h2><i class="fas fa-cog" style="color:var(--primary);margin-right:8px;"></i>Supabase Configuration</h2>
+                    <p class="sub">Enter your Supabase project credentials to connect. They will be saved locally.</p>
+                    <form id="settingsForm">
+                        <div class="form-group">
+                            <label>Supabase URL <span class="required">*</span></label>
+                            <input class="form-control" id="supabaseUrl" placeholder="https://your-project.supabase.co" required />
+                        </div>
+                        <div class="form-group">
+                            <label>Supabase Anon Key <span class="required">*</span></label>
+                            <input class="form-control" id="supabaseKey" placeholder="eyJhbGciOiJIUzI1NiIs..." required />
+                        </div>
+                        <button type="submit" class="btn-primary w-full" style="justify-content:center;" id="btnSaveConfig">
+                            <i class="fas fa-save"></i> Save &amp; Connect
+                        </button>
+                    </form>
+                    <div id="configStatus" class="mt-16 text-sm text-center" style="color:var(--gray-500);"></div>
+                </div>
+            </div>
+
+            <!-- ========== PAGE: LOGIN ========== -->
+            <div class="page" id="pageLogin">
+                <div class="login-card">
+                    <div class="logo-icon"><i class="fas fa-users-cog"></i></div>
+                    <h2>Employee Manager</h2>
+                    <p>Sign in with your Google account to manage organizations &amp; employees.</p>
+                    <button class="btn-google" id="btnGoogleLogin">
+                        <svg width="22" height="22" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+                        Sign in with Google
+                    </button>
+                    <div id="loginStatus" class="mt-16 text-sm text-muted"></div>
+                </div>
+            </div>
+
+            <!-- ========== PAGE: DASHBOARD (Organizations) ========== -->
+            <div class="page" id="pageDashboard">
+                <div class="section-header">
+                    <div>
+                        <h2><i class="fas fa-building" style="color:var(--primary);margin-right:8px;"></i>Organizations</h2>
+                        <span class="subtitle">Manage your organizations and their employees</span>
+                    </div>
+                    <button class="btn-primary" id="btnAddOrg">
+                        <i class="fas fa-plus"></i> New Organization
+                    </button>
+                </div>
+                <div id="orgList">
+                    <!-- rendered by JS -->
+                    <div class="empty-state">
+                        <i class="fas fa-building"></i>
+                        <p>No organizations yet. Create your first one!</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ========== PAGE: ORGANIZATION DETAIL (Employees) ========== -->
+            <div class="page" id="pageOrgDetail">
+                <button class="back-link" id="btnBackToOrgs">
+                    <i class="fas fa-arrow-left"></i> Back to Organizations
+                </button>
+                <div class="section-header">
+                    <div>
+                        <h2 id="orgDetailTitle"><i class="fas fa-users" style="color:var(--primary);margin-right:8px;"></i>Employees</h2>
+                        <span class="subtitle" id="orgDetailSub">Manage employees in this organization</span>
+                    </div>
+                    <button class="btn-primary" id="btnAddEmployee">
+                        <i class="fas fa-user-plus"></i> Add Employee
+                    </button>
+                </div>
+                <div id="employeeList">
+                    <!-- rendered by JS -->
+                    <div class="empty-state">
+                        <i class="fas fa-user-slash"></i>
+                        <p>No employees in this organization yet.</p>
+                    </div>
+                </div>
+            </div>
+
+        </div><!-- /main -->
+    </div><!-- /app -->
+
+    <!-- ===== MODAL: Organization ===== -->
+    <div class="modal-overlay" id="modalOrg">
+        <div class="modal">
+            <h3 id="modalOrgTitle">New Organization</h3>
+            <p class="modal-sub" id="modalOrgSub">Enter a 4‑digit code and a name.</p>
+            <form id="orgForm">
+                <input type="hidden" id="orgFormId" />
+                <div class="form-group">
+                    <label>Organization Code <span class="required">*</span></label>
+                    <input class="form-control" id="orgFormCode" placeholder="e.g. 1234" maxlength="4" pattern="[0-9]{4}" required />
+                    <div class="text-sm text-muted mt-8">Exactly 4 digits.</div>
+                </div>
+                <div class="form-group">
+                    <label>Organization Name <span class="required">*</span></label>
+                    <input class="form-control" id="orgFormName" placeholder="e.g. Acme Corp" required />
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" id="modalOrgCancel">Cancel</button>
+                    <button type="submit" class="btn-primary" id="modalOrgSave">
+                        <i class="fas fa-check"></i> Save
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ===== MODAL: Employee ===== -->
+    <div class="modal-overlay" id="modalEmp">
+        <div class="modal">
+            <h3 id="modalEmpTitle">New Employee</h3>
+            <p class="modal-sub" id="modalEmpSub">Enter the employee's details.</p>
+            <form id="empForm">
+                <input type="hidden" id="empFormId" />
+                <div class="form-group">
+                    <label>Employee ID <span class="required">*</span></label>
+                    <input class="form-control" id="empFormEmployeeId" placeholder="e.g. EMP-001" required />
+                    <div class="text-sm text-muted mt-8">Unique within this organization.</div>
+                </div>
+                <div class="form-group">
+                    <label>Full Name <span class="required">*</span></label>
+                    <input class="form-control" id="empFormName" placeholder="e.g. Jane Smith" required />
+                </div>
+                <div class="form-group">
+                    <label>Role</label>
+                    <input class="form-control" id="empFormRole" placeholder="e.g. Manager, Developer" list="roleDatalist" autocomplete="off" />
+                    <datalist id="roleDatalist"></datalist>
+                    <div class="text-sm text-muted mt-8">Start typing to see suggestions from previous roles.</div>
+                </div>
+                <div class="form-group">
+                    <label>Password <span class="required">*</span></label>
+                    <input class="form-control" id="empFormPassword" type="password" placeholder="At least 6 characters" required minlength="6" />
+                </div>
+                <div class="form-group">
+                    <label>4‑Digit PIN <span class="required">*</span></label>
+                    <input class="form-control" id="empFormPin" type="password" placeholder="e.g. 1234" maxlength="4" pattern="[0-9]{4}" required />
+                    <div class="text-sm text-muted mt-8">Exactly 4 digits.</div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" id="modalEmpCancel">Cancel</button>
+                    <button type="submit" class="btn-primary" id="modalEmpSave">
+                        <i class="fas fa-check"></i> Save
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ===== TOAST CONTAINER ===== -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+        // ============================================================
+        //  STATE
+        // ============================================================
+        const STATE = {
+            supabase: null,
+            config: null, // { url, key }
+            session: null, // supabase auth session
+            organizations: [],
+            employees: [],
+            roles: [], // for autocomplete
+            currentOrgId: null, // which org we're viewing
+            isEditingOrg: false,
+            isEditingEmp: false,
+        };
+
+        // ============================================================
+        //  DOM REFS
+        // ============================================================
+        const $ = (sel) => document.querySelector(sel);
+        const $$ = (sel) => document.querySelectorAll(sel);
+
+        const pages = {
+            settings: $('#pageSettings'),
+            login: $('#pageLogin'),
+            dashboard: $('#pageDashboard'),
+            orgDetail: $('#pageOrgDetail'),
+        };
+
+        const topbar = $('#topbar');
+        const userEmail = $('#userEmail');
+        const btnLogout = $('#btnLogout');
+
+        // settings
+        const settingsForm = $('#settingsForm');
+        const supabaseUrl = $('#supabaseUrl');
+        const supabaseKey = $('#supabaseKey');
+        const configStatus = $('#configStatus');
+        const btnSaveConfig = $('#btnSaveConfig');
+
+        // login
+        const btnGoogleLogin = $('#btnGoogleLogin');
+        const loginStatus = $('#loginStatus');
+
+        // orgs
+        const orgList = $('#orgList');
+        const btnAddOrg = $('#btnAddOrg');
+
+        // org modal
+        const modalOrg = $('#modalOrg');
+        const orgForm = $('#orgForm');
+        const orgFormId = $('#orgFormId');
+        const orgFormCode = $('#orgFormCode');
+        const orgFormName = $('#orgFormName');
+        const modalOrgTitle = $('#modalOrgTitle');
+        const modalOrgSub = $('#modalOrgSub');
+        const modalOrgCancel = $('#modalOrgCancel');
+        const modalOrgSave = $('#modalOrgSave');
+
+        // employees
+        const employeeList = $('#employeeList');
+        const btnAddEmployee = $('#btnAddEmployee');
+        const btnBackToOrgs = $('#btnBackToOrgs');
+        const orgDetailTitle = $('#orgDetailTitle');
+        const orgDetailSub = $('#orgDetailSub');
+
+        // emp modal
+        const modalEmp = $('#modalEmp');
+        const empForm = $('#empForm');
+        const empFormId = $('#empFormId');
+        const empFormEmployeeId = $('#empFormEmployeeId');
+        const empFormName = $('#empFormName');
+        const empFormRole = $('#empFormRole');
+        const empFormPassword = $('#empFormPassword');
+        const empFormPin = $('#empFormPin');
+        const roleDatalist = $('#roleDatalist');
+        const modalEmpTitle = $('#modalEmpTitle');
+        const modalEmpSub = $('#modalEmpSub');
+        const modalEmpCancel = $('#modalEmpCancel');
+        const modalEmpSave = $('#modalEmpSave');
+
+        const toastContainer = $('#toastContainer');
+
+        // ============================================================
+        //  TOAST
+        // ============================================================
+        function showToast(message, type = 'success') {
+            const el = document.createElement('div');
+            el.className = `toast ${type}`;
+            const icon = type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle';
+            el.innerHTML = `<i class="fas ${icon}"></i> ${message}`;
+            toastContainer.appendChild(el);
+            setTimeout(() => {
+                el.style.opacity = '0';
+                el.style.transform = 'translateX(20px)';
+                el.style.transition = '0.25s ease';
+                setTimeout(() => el.remove(), 300);
+            }, 3500);
+        }
+
+        // ============================================================
+        //  CONFIG
+        // ============================================================
+        function loadConfig() {
+            try {
+                const raw = localStorage.getItem('empManager_config');
+                if (raw) {
+                    const cfg = JSON.parse(raw);
+                    if (cfg.url && cfg.key) {
+                        STATE.config = cfg;
+                        supabaseUrl.value = cfg.url;
+                        supabaseKey.value = cfg.key;
+                        return cfg;
+                    }
+                }
+            } catch (_) { /* ignore */ }
+            return null;
+        }
+
+        function saveConfig(url, key) {
+            const cfg = { url: url.trim(), key: key.trim() };
+            localStorage.setItem('empManager_config', JSON.stringify(cfg));
+            STATE.config = cfg;
+            return cfg;
+        }
+
+        // ============================================================
+        //  SUPABASE CLIENT
+        // ============================================================
+        function initSupabase() {
+            const cfg = STATE.config;
+            if (!cfg || !cfg.url || !cfg.key) return null;
+            try {
+                const client = window.supabase.createClient(cfg.url, cfg.key, {
+                    auth: {
+                        autoRefreshToken: true,
+                        persistSession: true,
+                        storage: window.localStorage,
+                        storageKey: 'empManager_sb_auth',
+                    }
+                });
+                STATE.supabase = client;
+                return client;
+            } catch (e) {
+                console.error('Supabase init error:', e);
+                return null;
+            }
+        }
+
+        // ============================================================
+        //  AUTH
+        // ============================================================
+        async function getSession() {
+            if (!STATE.supabase) return null;
+            const { data, error } = await STATE.supabase.auth.getSession();
+            if (error) {
+                console.error('getSession error:', error);
+                return null;
+            }
+            return data.session;
+        }
+
+        async function signInWithGoogle() {
+            if (!STATE.supabase) {
+                showToast('Supabase not configured.', 'error');
+                return;
+            }
+            loginStatus.textContent = 'Redirecting to Google...';
+            const { error } = await STATE.supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: window.location.origin + window.location.pathname,
+                },
+            });
+            if (error) {
+                loginStatus.textContent = 'Error: ' + error.message;
+                showToast('Google sign-in error: ' + error.message, 'error');
+            }
+        }
+
+        async function signOut() {
+            if (!STATE.supabase) return;
+            await STATE.supabase.auth.signOut();
+            STATE.session = null;
+            renderApp();
+        }
+
+        // ============================================================
+        //  RLS-COMPATIBLE QUERIES (with employer_id / org scope)
+        // ============================================================
+        function getEmployerId() {
+            return STATE.session?.user?.id || null;
+        }
+
+        // ---- ORGANIZATIONS ----
+        async function fetchOrganizations() {
+            const uid = getEmployerId();
+            if (!uid || !STATE.supabase) return [];
+            const { data, error } = await STATE.supabase
+                .from('organizations')
+                .select('*')
+                .eq('employer_id', uid)
+                .order('created_at', { ascending: true });
+            if (error) {
+                console.error('fetchOrganizations error:', error);
+                showToast('Error loading organizations: ' + error.message, 'error');
+                return [];
+            }
+            return data || [];
+        }
+
+        async function createOrganization(orgCode, orgName) {
+            const uid = getEmployerId();
+            if (!uid || !STATE.supabase) throw new Error('Not authenticated');
+            const { data, error } = await STATE.supabase
+                .from('organizations')
+                .insert({ org_code: orgCode, org_name: orgName, employer_id: uid })
+                .select()
+                .single();
+            if (error) throw error;
+            return data;
+        }
+
+        async function updateOrganization(id, orgCode, orgName) {
+            if (!STATE.supabase) throw new Error('No client');
+            const { data, error } = await STATE.supabase
+                .from('organizations')
+                .update({ org_code: orgCode, org_name: orgName, updated_at: new Date().toISOString() })
+                .eq('id', id)
+                .select()
+                .single();
+            if (error) throw error;
+            return data;
+        }
+
+        async function deleteOrganization(id) {
+            if (!STATE.supabase) throw new Error('No client');
+            const { error } = await STATE.supabase
+                .from('organizations')
+                .delete()
+                .eq('id', id);
+            if (error) throw error;
+        }
+
+        // ---- EMPLOYEES ----
+        async function fetchEmployees(orgId) {
+            if (!STATE.supabase) return [];
+            const { data, error } = await STATE.supabase
+                .from('employees')
+                .select('*')
+                .eq('organization_id', orgId)
+                .order('created_at', { ascending: true });
+            if (error) {
+                console.error('fetchEmployees error:', error);
+                showToast('Error loading employees: ' + error.message, 'error');
+                return [];
+            }
+            return data || [];
+        }
+
+        async function fetchRoles(orgId) {
+            if (!STATE.supabase) return [];
+            const { data, error } = await STATE.supabase
+                .from('roles')
+                .select('role_name')
+                .eq('organization_id', orgId)
+                .order('role_name', { ascending: true });
+            if (error) {
+                console.error('fetchRoles error:', error);
+                return [];
+            }
+            return data.map(r => r.role_name);
+        }
+
+        async function ensureRole(orgId, roleName) {
+            if (!roleName || !roleName.trim()) return;
+            const trimmed = roleName.trim();
+            if (!trimmed) return;
+            // check if exists
+            const { data, error } = await STATE.supabase
+                .from('roles')
+                .select('id')
+                .eq('organization_id', orgId)
+                .eq('role_name', trimmed)
+                .maybeSingle();
+            if (error) {
+                console.error('ensureRole check error:', error);
+                return;
+            }
+            if (data) return; // already exists
+            // insert
+            const { error: insErr } = await STATE.supabase
+                .from('roles')
+                .insert({ organization_id: orgId, role_name: trimmed });
+            if (insErr) {
+                console.error('ensureRole insert error:', insErr);
+            }
+        }
+
+        async function createEmployee(orgId, employeeId, name, role, password, pin) {
+            if (!STATE.supabase) throw new Error('No client');
+            const salt = bcrypt.genSaltSync(10);
+            const pwdHash = bcrypt.hashSync(password, salt);
+            const pinHash = bcrypt.hashSync(pin, salt);
+            const { data, error } = await STATE.supabase
+                .from('employees')
+                .insert({
+                    organization_id: orgId,
+                    employee_id: employeeId.trim(),
+                    name: name.trim(),
+                    role: role ? role.trim() : null,
+                    password_hash: pwdHash,
+                    pin_hash: pinHash,
+                })
+                .select()
+                .single();
+            if (error) throw error;
+            // ensure role in roles table
+            if (role && role.trim()) {
+                await ensureRole(orgId, role.trim());
+            }
+            return data;
+        }
+
+        async function updateEmployee(id, orgId, employeeId, name, role, password, pin) {
+            if (!STATE.supabase) throw new Error('No client');
+            const payload = {
+                employee_id: employeeId.trim(),
+                name: name.trim(),
+                role: role ? role.trim() : null,
+                updated_at: new Date().toISOString(),
+            };
+            // only hash & update password/pin if provided
+            if (password && password.length > 0) {
+                const salt = bcrypt.genSaltSync(10);
+                payload.password_hash = bcrypt.hashSync(password, salt);
+            }
+            if (pin && pin.length === 4) {
+                const salt = bcrypt.genSaltSync(10);
+                payload.pin_hash = bcrypt.hashSync(pin, salt);
+            }
+            const { data, error } = await STATE.supabase
+                .from('employees')
+                .update(payload)
+                .eq('id', id)
+                .select()
+                .single();
+            if (error) throw error;
+            if (role && role.trim()) {
+                await ensureRole(orgId, role.trim());
+            }
+            return data;
+        }
+
+        async function deleteEmployee(id) {
+            if (!STATE.supabase) throw new Error('No client');
+            const { error } = await STATE.supabase
+                .from('employees')
+                .delete()
+                .eq('id', id);
+            if (error) throw error;
+        }
+
+        // ============================================================
+        //  RENDER
+        // ============================================================
+        function showPage(pageId) {
+            Object.values(pages).forEach(p => p.classList.remove('active'));
+            const el = document.getElementById(pageId);
+            if (el) el.classList.add('active');
+        }
+
+        function renderApp() {
+            const cfg = loadConfig();
+            if (!cfg) {
+                topbar.style.display = 'none';
+                showPage('pageSettings');
+                return;
+            }
+            // init supabase if not already
+            if (!STATE.supabase) {
+                initSupabase();
+            }
+            // check session
+            getSession().then(session => {
+                STATE.session = session;
+                if (session) {
+                    topbar.style.display = 'flex';
+                    userEmail.textContent = session.user?.email || 'User';
+                    renderDashboard();
+                } else {
+                    topbar.style.display = 'none';
+                    showPage('pageLogin');
+                    loginStatus.textContent = '';
+                }
+            }).catch(() => {
+                topbar.style.display = 'none';
+                showPage('pageLogin');
+            });
+        }
+
+        // ---- RENDER DASHBOARD ----
+        async function renderDashboard() {
+            showPage('pageDashboard');
+            const orgs = await fetchOrganizations();
+            STATE.organizations = orgs;
+            renderOrgList(orgs);
+        }
+
+        function renderOrgList(orgs) {
+            if (!orgs || orgs.length === 0) {
+                orgList.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-building"></i>
+                        <p>No organizations yet. Create your first one!</p>
+                    </div>
+                `;
+                return;
+            }
+            let html = '<div class="org-grid">';
+            orgs.forEach(org => {
+                html += `
+                    <div class="org-card" data-org-id="${org.id}">
+                        <div class="org-code">${org.org_code}</div>
+                        <div class="org-name">${escHtml(org.org_name)}</div>
+                        <div class="org-actions">
+                            <button class="btn-edit-org" data-id="${org.id}" data-code="${org.org_code}" data-name="${escHtml(org.org_name)}">
+                                <i class="fas fa-edit"></i> Edit
+                            </button>
+                            <button class="btn-del-org" data-id="${org.id}">
+                                <i class="fas fa-trash"></i> Delete
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            orgList.innerHTML = html;
+
+            // click on card -> view employees
+            orgList.querySelectorAll('.org-card').forEach(card => {
+                card.addEventListener('click', (e) => {
+                    // ignore if click on action button
+                    if (e.target.closest('.org-actions')) return;
+                    const id = card.dataset.orgId;
+                    if (id) viewOrganization(id);
+                });
+            });
+
+            // edit buttons
+            orgList.querySelectorAll('.btn-edit-org').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const id = btn.dataset.id;
+                    const code = btn.dataset.code;
+                    const name = btn.dataset.name;
+                    openOrgModal(id, code, name);
+                });
+            });
+
+            // delete buttons
+            orgList.querySelectorAll('.btn-del-org').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const id = btn.dataset.id;
+                    if (!confirm('Delete this organization and all its employees?')) return;
+                    try {
+                        await deleteOrganization(id);
+                        showToast('Organization deleted.');
+                        renderDashboard();
+                    } catch (err) {
+                        showToast('Delete failed: ' + err.message, 'error');
+                    }
+                });
+            });
+        }
+
+        // ---- VIEW ORGANIZATION (employees) ----
+        async function viewOrganization(orgId) {
+            STATE.currentOrgId = orgId;
+            const org = STATE.organizations.find(o => o.id === orgId);
+            if (!org) {
+                showToast('Organization not found.', 'error');
+                return;
+            }
+            orgDetailTitle.innerHTML =
+                `<i class="fas fa-users" style="color:var(--primary);margin-right:8px;"></i>${escHtml(org.org_name)}`;
+            orgDetailSub.textContent = `Code: ${org.org_code} · Manage employees`;
+
+            showPage('pageOrgDetail');
+
+            // fetch employees
+            const emps = await fetchEmployees(orgId);
+            STATE.employees = emps;
+            // fetch roles for autocomplete
+            const roles = await fetchRoles(orgId);
+            STATE.roles = roles;
+            updateRoleDatalist(roles);
+
+            renderEmployeeList(emps);
+        }
+
+        function renderEmployeeList(emps) {
+            if (!emps || emps.length === 0) {
+                employeeList.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-user-slash"></i>
+                        <p>No employees in this organization yet.</p>
+                    </div>
+                `;
+                return;
+            }
+            let html = `
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Employee ID</th>
+                                <th>Name</th>
+                                <th>Role</th>
+                                <th style="text-align:right;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            emps.forEach(emp => {
+                html += `
+                    <tr>
+                        <td><span class="emp-id">${escHtml(emp.employee_id)}</span></td>
+                        <td><strong>${escHtml(emp.name)}</strong></td>
+                        <td>${emp.role ? `<span class="badge badge-role">${escHtml(emp.role)}</span>` : '<span class="badge">—</span>'}</td>
+                        <td style="text-align:right;">
+                            <div class="employee-actions" style="justify-content:flex-end;">
+                                <button class="btn-edit-emp" data-id="${emp.id}" data-empid="${escHtml(emp.employee_id)}" data-name="${escHtml(emp.name)}" data-role="${escHtml(emp.role||'')}">
+                                    <i class="fas fa-edit"></i> Edit
+                                </button>
+                                <button class="btn-del-emp" data-id="${emp.id}">
+                                    <i class="fas fa-trash"></i> Delete
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+            html += '</tbody></table></div>';
+            employeeList.innerHTML = html;
+
+            // edit
+            employeeList.querySelectorAll('.btn-edit-emp').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const id = btn.dataset.id;
+                    const empId = btn.dataset.empid;
+                    const name = btn.dataset.name;
+                    const role = btn.dataset.role;
+                    openEmpModal(id, empId, name, role);
+                });
+            });
+
+            // delete
+            employeeList.querySelectorAll('.btn-del-emp').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const id = btn.dataset.id;
+                    if (!confirm('Delete this employee?')) return;
+                    try {
+                        await deleteEmployee(id);
+                        showToast('Employee deleted.');
+                        viewOrganization(STATE.currentOrgId);
+                    } catch (err) {
+                        showToast('Delete failed: ' + err.message, 'error');
+                    }
+                });
+            });
+        }
+
+        function updateRoleDatalist(roles) {
+            roleDatalist.innerHTML = '';
+            roles.forEach(r => {
+                const opt = document.createElement('option');
+                opt.value = r;
+                roleDatalist.appendChild(opt);
+            });
+        }
+
+        // ============================================================
+        //  ORG MODAL
+        // ============================================================
+        function openOrgModal(id = null, code = '', name = '') {
+            STATE.isEditingOrg = !!id;
+            if (id) {
+                orgFormId.value = id;
+                orgFormCode.value = code;
+                orgFormName.value = name;
+                modalOrgTitle.textContent = 'Edit Organization';
+                modalOrgSub.textContent = 'Update the organization details.';
+                modalOrgSave.innerHTML = '<i class="fas fa-save"></i> Update';
+            } else {
+                orgFormId.value = '';
+                orgFormCode.value = '';
+                orgFormName.value = '';
+                modalOrgTitle.textContent = 'New Organization';
+                modalOrgSub.textContent = 'Enter a 4‑digit code and a name.';
+                modalOrgSave.innerHTML = '<i class="fas fa-plus"></i> Create';
+            }
+            modalOrg.classList.add('open');
+            orgFormCode.focus();
+        }
+
+        function closeOrgModal() {
+            modalOrg.classList.remove('open');
+        }
+
+        // ============================================================
+        //  EMP MODAL
+        // ============================================================
+        function openEmpModal(id = null, employeeId = '', name = '', role = '') {
+            STATE.isEditingEmp = !!id;
+            if (id) {
+                empFormId.value = id;
+                empFormEmployeeId.value = employeeId;
+                empFormName.value = name;
+                empFormRole.value = role;
+                empFormPassword.value = '';
+                empFormPin.value = '';
+                modalEmpTitle.textContent = 'Edit Employee';
+                modalEmpSub.textContent = 'Update employee details. Leave password/PIN blank to keep unchanged.';
+                modalEmpSave.innerHTML = '<i class="fas fa-save"></i> Update';
+            } else {
+                empFormId.value = '';
+                empFormEmployeeId.value = '';
+                empFormName.value = '';
+                empFormRole.value = '';
+                empFormPassword.value = '';
+                empFormPin.value = '';
+                modalEmpTitle.textContent = 'New Employee';
+                modalEmpSub.textContent = 'Enter the employee\'s details.';
+                modalEmpSave.innerHTML = '<i class="fas fa-user-plus"></i> Create';
+            }
+            // refresh roles in datalist
+            const roles = STATE.roles || [];
+            updateRoleDatalist(roles);
+            modalEmp.classList.add('open');
+            empFormEmployeeId.focus();
+        }
+
+        function closeEmpModal() {
+            modalEmp.classList.remove('open');
+        }
+
+        // ============================================================
+        //  EVENT BINDINGS
+        // ============================================================
+
+        // -- Settings --
+        settingsForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const url = supabaseUrl.value.trim();
+            const key = supabaseKey.value.trim();
+            if (!url || !key) {
+                configStatus.textContent = 'Please fill in both fields.';
+                configStatus.style.color = 'var(--danger)';
+                return;
+            }
+            try {
+                new URL(url);
+            } catch (_) {
+                configStatus.textContent = 'Invalid URL format.';
+                configStatus.style.color = 'var(--danger)';
+                return;
+            }
+            saveConfig(url, key);
+            configStatus.textContent = '✓ Configuration saved!';
+            configStatus.style.color = 'var(--success)';
+            // re-init
+            initSupabase();
+            renderApp();
+        });
+
+        // -- Login --
+        btnGoogleLogin.addEventListener('click', signInWithGoogle);
+
+        // -- Logout --
+        btnLogout.addEventListener('click', signOut);
+
+        // -- Add Org --
+        btnAddOrg.addEventListener('click', () => openOrgModal());
+
+        // -- Org Modal --
+        modalOrgCancel.addEventListener('click', closeOrgModal);
+        modalOrg.addEventListener('click', (e) => {
+            if (e.target === modalOrg) closeOrgModal();
+        });
+
+        orgForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = orgFormId.value;
+            const code = orgFormCode.value.trim();
+            const name = orgFormName.value.trim();
+            if (!/^[0-9]{4}$/.test(code)) {
+                showToast('Organization code must be exactly 4 digits.', 'error');
+                return;
+            }
+            if (!name) {
+                showToast('Organization name is required.', 'error');
+                return;
+            }
+            try {
+                if (id) {
+                    await updateOrganization(id, code, name);
+                    showToast('Organization updated.');
+                } else {
+                    await createOrganization(code, name);
+                    showToast('Organization created.');
+                }
+                closeOrgModal();
+                renderDashboard();
+            } catch (err) {
+                showToast('Error: ' + err.message, 'error');
+            }
+        });
+
+        // -- Back to Orgs --
+        btnBackToOrgs.addEventListener('click', renderDashboard);
+
+        // -- Add Employee --
+        btnAddEmployee.addEventListener('click', () => {
+            if (!STATE.currentOrgId) {
+                showToast('No organization selected.', 'error');
+                return;
+            }
+            openEmpModal();
+        });
+
+        // -- Emp Modal --
+        modalEmpCancel.addEventListener('click', closeEmpModal);
+        modalEmp.addEventListener('click', (e) => {
+            if (e.target === modalEmp) closeEmpModal();
+        });
+
+        empForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = empFormId.value;
+            const employeeId = empFormEmployeeId.value.trim();
+            const name = empFormName.value.trim();
+            const role = empFormRole.value.trim();
+            const password = empFormPassword.value;
+            const pin = empFormPin.value.trim();
+
+            if (!employeeId) {
+                showToast('Employee ID is required.', 'error');
+                return;
+            }
+            if (!name) {
+                showToast('Name is required.', 'error');
+                return;
+            }
+            if (!id && (!password || password.length < 6)) {
+                showToast('Password must be at least 6 characters.', 'error');
+                return;
+            }
+            if (!id && !/^[0-9]{4}$/.test(pin)) {
+                showToast('PIN must be exactly 4 digits.', 'error');
+                return;
+            }
+            if (id && pin && !/^[0-9]{4}$/.test(pin)) {
+                showToast('PIN must be exactly 4 digits.', 'error');
+                return;
+            }
+
+            const orgId = STATE.currentOrgId;
+            if (!orgId) {
+                showToast('No organization selected.', 'error');
+                return;
+            }
+
+            try {
+                if (id) {
+                    await updateEmployee(id, orgId, employeeId, name, role, password, pin);
+                    showToast('Employee updated.');
+                } else {
+                    await createEmployee(orgId, employeeId, name, role, password, pin);
+                    showToast('Employee created.');
+                }
+                closeEmpModal();
+                viewOrganization(orgId);
+            } catch (err) {
+                showToast('Error: ' + err.message, 'error');
+            }
+        });
+
+        // ============================================================
+        //  UTILITY
+        // ============================================================
+        function escHtml(str) {
+            if (!str) return '';
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        // ============================================================
+        //  HANDLE AUTH CALLBACK (OAuth redirect)
+        // ============================================================
+        async function handleAuthCallback() {
+            const cfg = loadConfig();
+            if (!cfg) return;
+            if (!STATE.supabase) initSupabase();
+            if (!STATE.supabase) return;
+            const { data, error } = await STATE.supabase.auth.getSession();
+            if (error) {
+                console.error('Auth callback error:', error);
+                return;
+            }
+            if (data.session) {
+                STATE.session = data.session;
+                // Check if URL has hash params from OAuth
+                if (window.location.hash) {
+                    // clean URL
+                    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+                }
+                renderApp();
+            }
+        }
+
+        // ============================================================
+        //  INIT
+        // ============================================================
+        async function init() {
+            const cfg = loadConfig();
+            if (cfg) {
+                initSupabase();
+                // check if we have a session from OAuth redirect
+                await handleAuthCallback();
+            } else {
+                showPage('pageSettings');
+                topbar.style.display = 'none';
+            }
+
+            // If already has config but no session, show login
+            if (cfg && !STATE.session) {
+                topbar.style.display = 'none';
+                showPage('pageLogin');
+            } else if (cfg && STATE.session) {
+                topbar.style.display = 'flex';
+                userEmail.textContent = STATE.session.user?.email || 'User';
+                renderDashboard();
+            }
+
+            // Handle OAuth redirect hash cleanup (after page load)
+            if (window.location.hash && window.location.hash.includes('access_token')) {
+                // Supabase already handled it via getSession
+                // Just clean the URL
+                setTimeout(() => {
+                    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+                }, 500);
+            }
+        }
+
+        // Run
+        init().catch(console.error);
+
+        // Expose for debugging
+        console.log('🚀 EmpManager loaded.');
+        console.log('State:', STATE);
+    </script>
+
+</body>
+</html>
