@@ -703,6 +703,132 @@
         .toast i {
             font-size: 1.1rem;
         }
+
+        /* ----- TABS SYSTEM ----- */
+        .tabs {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 24px;
+            border-bottom: 2px solid var(--gray-100);
+            padding-bottom: 4px;
+        }
+        .tab-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--gray-500);
+            border-radius: 8px 8px 0 0;
+            transition: var(--transition);
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            background: transparent;
+        }
+        .tab-btn:hover {
+            color: var(--gray-800);
+            background: var(--gray-50);
+        }
+        .tab-btn.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+        .tab-btn i {
+            font-size: 1rem;
+        }
+
+        /* ----- ATTENDANCE LAYOUT ----- */
+        .attendance-card {
+            background: #fff;
+            border: 1px solid var(--gray-200);
+            border-radius: var(--radius);
+            padding: 22px;
+            margin-bottom: 20px;
+            box-shadow: var(--shadow);
+        }
+        .attendance-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px dashed var(--gray-200);
+            padding-bottom: 12px;
+            margin-bottom: 16px;
+        }
+        .attendance-card-header .emp-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .attendance-card-header .emp-name {
+            font-weight: 700;
+            font-size: 1.15rem;
+            color: var(--gray-900);
+        }
+        .attendance-card-header .emp-id {
+            background: var(--gray-100);
+            color: var(--gray-600);
+            padding: 3px 10px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+        .attendance-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.95rem;
+        }
+        .attendance-table th,
+        .attendance-table td {
+            padding: 12px 14px;
+            text-align: left;
+            border-bottom: 1px solid var(--gray-100);
+        }
+        .attendance-table th {
+            font-weight: 600;
+            color: var(--gray-500);
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .attendance-table td {
+            color: var(--gray-700);
+        }
+        .reason-badge {
+            background: #fffbeb;
+            color: #d97706;
+            border: 1px solid #fef3c7;
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            display: inline-block;
+        }
+        .reason-detail {
+            font-size: 0.85rem;
+            color: var(--gray-500);
+            margin-top: 4px;
+            display: block;
+            line-height: 1.4;
+        }
+        .badge-success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        .badge-info {
+            background: #e0f2fe;
+            color: #0369a1;
+        }
+        .badge-warning {
+            background: #fef3c7;
+            color: #d97706;
+        }
+        .badge-secondary {
+            background: #f3f4f6;
+            color: #4b5563;
+        }
     </style>
 </head>
 <body>
@@ -796,11 +922,35 @@
                         <i class="fas fa-user-plus"></i> Add Employee
                     </button>
                 </div>
-                <div id="employeeList">
-                    <!-- rendered by JS -->
-                    <div class="empty-state">
-                        <i class="fas fa-user-slash"></i>
-                        <p>No employees in this organization yet.</p>
+                <!-- Tabs for switching views -->
+                <div class="tabs" id="orgDetailTabs">
+                    <button class="tab-btn active" id="tabEmployees">
+                        <i class="fas fa-user-friends"></i> Employees
+                    </button>
+                    <button class="tab-btn" id="tabAttendance">
+                        <i class="fas fa-calendar-check"></i> Attendance
+                    </button>
+                </div>
+
+                <!-- Sub-view: Employees List -->
+                <div id="employeeSection">
+                    <div id="employeeList">
+                        <!-- rendered by JS -->
+                        <div class="empty-state">
+                            <i class="fas fa-user-slash"></i>
+                            <p>No employees in this organization yet.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sub-view: Attendance List -->
+                <div id="attendanceSection" style="display: none;">
+                    <div id="attendanceList">
+                        <!-- rendered by JS -->
+                        <div class="empty-state">
+                            <i class="fas fa-calendar-times"></i>
+                            <p>No attendance records found.</p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -879,6 +1029,9 @@
     <div class="toast-container" id="toastContainer"></div>
 
     <script>
+        // Global bcrypt reference mapping for BcryptJS loaded via UMD CDN
+        const bcrypt = window.bcrypt || (window.dcodeIO && window.dcodeIO.bcrypt);
+
         // ============================================================
         //  STATE
         // ============================================================
@@ -943,6 +1096,13 @@
         const btnBackToOrgs = $('#btnBackToOrgs');
         const orgDetailTitle = $('#orgDetailTitle');
         const orgDetailSub = $('#orgDetailSub');
+
+        // tabs & attendance
+        const tabEmployees = $('#tabEmployees');
+        const tabAttendance = $('#tabAttendance');
+        const employeeSection = $('#employeeSection');
+        const attendanceSection = $('#attendanceSection');
+        const attendanceList = $('#attendanceList');
 
         // emp modal
         const modalEmp = $('#modalEmp');
@@ -1355,6 +1515,168 @@
             });
         }
 
+        // ---- TABS SWITCHING ----
+        function switchTab(tab) {
+            if (tab === 'employees') {
+                tabEmployees.classList.add('active');
+                tabAttendance.classList.remove('active');
+                employeeSection.style.display = 'block';
+                attendanceSection.style.display = 'none';
+                btnAddEmployee.style.display = 'inline-flex';
+            } else if (tab === 'attendance') {
+                tabEmployees.classList.remove('active');
+                tabAttendance.classList.add('active');
+                employeeSection.style.display = 'none';
+                attendanceSection.style.display = 'block';
+                btnAddEmployee.style.display = 'none';
+                if (STATE.currentOrgId) {
+                    loadAndRenderAttendance(STATE.currentOrgId);
+                }
+            }
+        }
+
+        // ---- ATTENDANCE LOGS ----
+        async function fetchAttendance(orgId) {
+            if (!STATE.supabase) return [];
+            const { data, error } = await STATE.supabase
+                .from('attendance')
+                .select('*')
+                .eq('organization_id', orgId)
+                .order('date', { ascending: false });
+            if (error) {
+                console.error('fetchAttendance error:', error);
+                showToast('Error loading attendance: ' + error.message, 'error');
+                return [];
+            }
+            return data || [];
+        }
+
+        async function loadAndRenderAttendance(orgId) {
+            attendanceList.innerHTML = `
+                <div style="text-align:center;padding:32px;color:var(--gray-500);">
+                    <i class="fas fa-spinner fa-spin" style="font-size:2rem;margin-bottom:8px;"></i>
+                    <p>Loading attendance records...</p>
+                </div>
+            `;
+            const records = await fetchAttendance(orgId);
+            renderAttendanceList(STATE.employees, records);
+        }
+
+        function getAttendanceStatus(rec) {
+            if (!rec.punch_in_time) return 'Absent';
+            if (!rec.punch_out_time) return 'Punched In';
+            const reason = rec.punch_out_reason ? rec.punch_out_reason.trim() : '';
+            if (reason) {
+                if (reason.toLowerCase() === 'half day') return 'Half Day';
+                return `Present (${reason})`;
+            }
+            return 'Present';
+        }
+
+        function getStatusBadgeClass(status) {
+            if (status === 'Present') return 'badge-success';
+            if (status === 'Punched In') return 'badge-info';
+            if (status === 'Half Day') return 'badge-warning';
+            return 'badge-secondary';
+        }
+
+        function renderAttendanceList(employees, records) {
+            if (!employees || employees.length === 0) {
+                attendanceList.innerHTML = `
+                    <div class="empty-state">
+                        <i class="fas fa-user-slash"></i>
+                        <p>No employees in this organization yet.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '';
+            employees.forEach(emp => {
+                // Match attendance only using UUID: r.employee_id = emp.id
+                const empRecords = records.filter(r => r.employee_id === emp.id);
+
+                html += `
+                    <div class="attendance-card">
+                       <div class="attendance-card-header">
+                           <div class="emp-info">
+                               <span class="emp-name">${escHtml(emp.name)}</span>
+                               <span class="emp-id">${escHtml(emp.employee_id)}</span>
+                               ${emp.role ? `<span class="badge badge-role" style="font-size:0.75rem;padding:2px 8px;margin-left:8px;">${escHtml(emp.role)}</span>` : ''}
+                           </div>
+                           <div style="font-size:0.8rem;color:var(--gray-500);">
+                               ${empRecords.length} record(s)
+                           </div>
+                       </div>
+                `;
+
+                if (empRecords.length === 0) {
+                    html += `
+                        <div style="color:var(--gray-400);font-size:0.9rem;padding:10px 12px;font-style:italic;">
+                            <i class="fas fa-info-circle"></i> No attendance records found for this employee.
+                        </div>
+                    `;
+                } else {
+                    html += `
+                        <div class="table-wrap">
+                            <table class="attendance-table">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Punch In</th>
+                                        <th>Punch Out</th>
+                                        <th>Status</th>
+                                        <th>Reason / Detail</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                    `;
+
+                    empRecords.forEach(rec => {
+                        const dateStr = rec.date || '—';
+                        const inTime = rec.punch_in_time ? escHtml(rec.punch_in_time) : '—';
+                        const outTime = rec.punch_out_time ? escHtml(rec.punch_out_time) : '—';
+                        
+                        const inImg = rec.punch_in_image_url ? 
+                            `<a href="${escHtml(rec.punch_in_image_url)}" target="_blank" title="View Full Punch-In Image"><img src="${escHtml(rec.punch_in_image_url)}" alt="Punch In" style="width:28px;height:28px;object-fit:cover;border-radius:4px;border:1px solid var(--gray-200);vertical-align:middle;margin-left:6px;cursor:pointer;transition:transform 0.15s;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" /></a>` : '';
+                        const outImg = rec.punch_out_image_url ? 
+                            `<a href="${escHtml(rec.punch_out_image_url)}" target="_blank" title="View Full Punch-Out Image"><img src="${escHtml(rec.punch_out_image_url)}" alt="Punch Out" style="width:28px;height:28px;object-fit:cover;border-radius:4px;border:1px solid var(--gray-200);vertical-align:middle;margin-left:6px;cursor:pointer;transition:transform 0.15s;" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform='scale(1)'" /></a>` : '';
+
+                        const status = getAttendanceStatus(rec);
+                        const badgeClass = getStatusBadgeClass(status);
+
+                        let reasonHtml = '—';
+                        if (rec.punch_out_reason) {
+                            reasonHtml = `<span class="reason-badge">${escHtml(rec.punch_out_reason)}</span>`;
+                            if (rec.punch_out_reason_detail) {
+                                reasonHtml += `<span class="reason-detail">${escHtml(rec.punch_out_reason_detail)}</span>`;
+                            }
+                        }
+
+                        html += `
+                            <tr>
+                                <td><strong>${escHtml(dateStr)}</strong></td>
+                                <td>${inTime} ${inImg}</td>
+                                <td>${outTime} ${outImg}</td>
+                                <td><span class="badge ${badgeClass}">${escHtml(status)}</span></td>
+                                <td>${reasonHtml}</td>
+                            </tr>
+                        `;
+                    });
+
+                    html += `
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                }
+
+                html += `</div>`; // Close attendance-card
+            });
+
+            attendanceList.innerHTML = html;
+        }
+
         // ---- VIEW ORGANIZATION (employees) ----
         async function viewOrganization(orgId) {
             STATE.currentOrgId = orgId;
@@ -1367,6 +1689,7 @@
                 `<i class="fas fa-users" style="color:var(--primary);margin-right:8px;"></i>${escHtml(org.org_name)}`;
             orgDetailSub.textContent = `Code: ${org.org_code} · Manage employees`;
 
+            switchTab('employees');
             showPage('pageOrgDetail');
 
             // fetch employees
@@ -1600,6 +1923,10 @@
 
         // -- Back to Orgs --
         btnBackToOrgs.addEventListener('click', renderDashboard);
+
+        // -- Tabs Navigation --
+        tabEmployees.addEventListener('click', () => switchTab('employees'));
+        tabAttendance.addEventListener('click', () => switchTab('attendance'));
 
         // -- Add Employee --
         btnAddEmployee.addEventListener('click', () => {
