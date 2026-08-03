@@ -1175,7 +1175,7 @@
                     auth: {
                         autoRefreshToken: true,
                         persistSession: true,
-                        detectSessionInUrl: false, // Prevent concurrent/duplicate auto-exchanges of PKCE code on creation
+                        detectSessionInUrl: true, // Prevent concurrent/duplicate auto-exchanges of PKCE code on creation
                         storage: window.localStorage,
                         storageKey: 'empManager_sb_auth',
                     }
