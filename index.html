@@ -1829,6 +1829,9 @@
         // ============================================================
         function openEmpModal(id = null, employeeId = '', name = '', role = '') {
             STATE.isEditingEmp = !!id;
+            const labelPassword = empFormPassword.previousElementSibling;
+            const labelPin = empFormPin.previousElementSibling;
+
             if (id) {
                 empFormId.value = id;
                 empFormEmployeeId.value = employeeId;
@@ -1836,6 +1839,15 @@
                 empFormRole.value = role;
                 empFormPassword.value = '';
                 empFormPin.value = '';
+                
+                empFormPassword.required = false;
+                empFormPin.required = false;
+                empFormPassword.placeholder = 'Leave blank to keep current password';
+                empFormPin.placeholder = 'Leave blank to keep current PIN';
+                
+                if (labelPassword) labelPassword.innerHTML = 'Password';
+                if (labelPin) labelPin.innerHTML = '4‑Digit PIN';
+
                 modalEmpTitle.textContent = 'Edit Employee';
                 modalEmpSub.textContent = 'Update employee details. Leave password/PIN blank to keep unchanged.';
                 modalEmpSave.innerHTML = '<i class="fas fa-save"></i> Update';
@@ -1846,6 +1858,15 @@
                 empFormRole.value = '';
                 empFormPassword.value = '';
                 empFormPin.value = '';
+
+                empFormPassword.required = true;
+                empFormPin.required = true;
+                empFormPassword.placeholder = 'At least 6 characters';
+                empFormPin.placeholder = 'e.g. 1234';
+
+                if (labelPassword) labelPassword.innerHTML = 'Password <span class="required">*</span>';
+                if (labelPin) labelPin.innerHTML = '4‑Digit PIN <span class="required">*</span>';
+
                 modalEmpTitle.textContent = 'New Employee';
                 modalEmpSub.textContent = 'Enter the employee\'s details.';
                 modalEmpSave.innerHTML = '<i class="fas fa-user-plus"></i> Create';
@@ -1972,15 +1993,23 @@
                 showToast('Name is required.', 'error');
                 return;
             }
-            if (!id && (!password || password.length < 6)) {
+            // For Create mode: password is required
+            if (!id && !password) {
+                showToast('Password is required.', 'error');
+                return;
+            }
+            // If password is provided (in either mode), validate length
+            if (password && password.length < 6) {
                 showToast('Password must be at least 6 characters.', 'error');
                 return;
             }
-            if (!id && !/^[0-9]{4}$/.test(pin)) {
-                showToast('PIN must be exactly 4 digits.', 'error');
+            // For Create mode: PIN is required
+            if (!id && !pin) {
+                showToast('PIN is required.', 'error');
                 return;
             }
-            if (id && pin && !/^[0-9]{4}$/.test(pin)) {
+            // If PIN is provided (in either mode), validate format (exactly 4 digits)
+            if (pin && !/^[0-9]{4}$/.test(pin)) {
                 showToast('PIN must be exactly 4 digits.', 'error');
                 return;
             }
