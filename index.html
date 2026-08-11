@@ -930,9 +930,6 @@
                 <span>EmpManager</span>
             </div>
             <div class="topbar-actions">
-                <button class="btn-secondary" id="btnFetchConfigTopbar" style="font-size: 13px; padding: 6px 12px; margin-right: 12px; border: 1px dashed var(--primary); color: var(--primary);">
-                    <i class="fas fa-cloud-download-alt"></i> Fetch Supabase Config
-                </button>
                 <span class="user-email" id="userEmail"></span>
                 <button class="btn-logout" id="btnLogout">
                     <i class="fas fa-sign-out-alt"></i> Logout
@@ -946,17 +943,22 @@
             <!-- ========== PAGE: SETTINGS ========== -->
             <div class="page active" id="pageSettings">
                 <div class="settings-card" style="text-align: center;">
-                    <h2><i class="fas fa-cog" style="color:var(--primary);margin-right:8px;"></i>Supabase Configuration</h2>
-                    <p class="sub" style="margin-bottom: 24px;">Click the button below to fetch and configure your Supabase settings automatically.</p>
-                    <button type="button" class="btn-primary w-full" id="btnFetchConfigSettings" style="justify-content:center; padding: 12px 20px; font-size: 15px;">
-                        <i class="fas fa-cloud-download-alt"></i> Fetch Supabase Config
-                    </button>
+                    <h2><i class="fas fa-key" style="color:var(--primary);margin-right:8px;"></i>Supabase Connection</h2>
+                    <p class="sub" style="margin-bottom: 24px;">Enter your PIN to configure and connect your database automatically.</p>
                     
-                    <!-- Hidden manual configuration form to preserve JavaScript DOM compatibility -->
-                    <form id="settingsForm" style="display: none;">
-                        <input id="supabaseUrl" value="" />
-                        <input id="supabaseKey" value="" />
+                    <form id="settingsForm">
+                        <div class="form-group" style="text-align: left; max-width: 320px; margin: 0 auto 20px auto;">
+                            <label style="font-weight: 500; display: block; margin-bottom: 6px; color: var(--gray-700);">Connection PIN <span class="required">*</span></label>
+                            <input class="form-control" type="password" id="connectionPin" placeholder="Enter 6-digit PIN" maxlength="6" required style="text-align: center; font-size: 18px; letter-spacing: 6px;" />
+                        </div>
+                        <button type="submit" class="btn-primary w-full" id="btnSaveConfig" style="justify-content:center; max-width: 320px; margin: 0 auto; padding: 12px; font-size: 15px;">
+                            <i class="fas fa-plug"></i> Connect Database
+                        </button>
                     </form>
+                    
+                    <!-- Hidden manual configuration inputs to preserve JavaScript DOM compatibility -->
+                    <input id="supabaseUrl" type="hidden" value="" />
+                    <input id="supabaseKey" type="hidden" value="" />
                     <div id="configStatus" class="mt-16 text-sm text-center" style="display: none;"></div>
                 </div>
             </div>
@@ -972,10 +974,6 @@
                         Sign in with Google
                     </button>
                     <div id="loginStatus" class="mt-16 text-sm text-muted"></div>
-                    <div class="divider mt-16 mb-16" style="border-top: 1px solid var(--gray-200); width: 100%;"></div>
-                    <button type="button" class="btn-secondary w-full" id="btnFetchConfigLogin" style="justify-content:center; border: 1px dashed var(--primary); color: var(--primary);">
-                        <i class="fas fa-cloud-download-alt"></i> Fetch Supabase Config
-                    </button>
                 </div>
             </div>
 
@@ -1116,32 +1114,7 @@
         </div>
     </div>
 
-    <!-- ===== MODAL: Fetch Supabase Config ===== -->
-    <div class="modal-overlay" id="modalFetchConfig">
-        <div class="modal-fetch-dark">
-            <div class="modal-fetch-icon">
-                <i class="fas fa-key"></i>
-            </div>
-            <h3>Fetch Supabase Config</h3>
-            <p class="modal-sub">Enter credentials to fetch your configuration</p>
-            <form id="fetchConfigForm">
-                <div class="form-group">
-                    <label>UUID (Optional)</label>
-                    <input class="form-control" id="fetchUuid" placeholder="e.g. 123e4567-e89b-12d3-a456-426614174000" autocomplete="off" />
-                </div>
-                <div class="form-group">
-                    <label>PIN <span class="required">*</span></label>
-                    <input class="form-control" id="fetchPin" type="password" placeholder="Enter PIN" required autocomplete="off" />
-                </div>
-                <div class="form-actions">
-                    <button type="button" class="btn-secondary" id="modalFetchCancel">Cancel</button>
-                    <button type="submit" class="btn-primary" id="modalFetchSubmit">
-                        <i class="fas fa-cloud-download-alt"></i> Fetch Configuration
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
+
 
     <!-- ===== TOAST CONTAINER ===== -->
     <div class="toast-container" id="toastContainer"></div>
@@ -1237,16 +1210,8 @@
         const modalEmpCancel = $('#modalEmpCancel');
         const modalEmpSave = $('#modalEmpSave');
 
-        // fetch config modal
-        const modalFetchConfig = $('#modalFetchConfig');
-        const btnFetchConfigSettings = $('#btnFetchConfigSettings');
-        const btnFetchConfigLogin = $('#btnFetchConfigLogin');
-        const btnFetchConfigTopbar = $('#btnFetchConfigTopbar');
-        const modalFetchCancel = $('#modalFetchCancel');
-        const fetchConfigForm = $('#fetchConfigForm');
-        const fetchUuid = $('#fetchUuid');
-        const fetchPin = $('#fetchPin');
-        const modalFetchSubmit = $('#modalFetchSubmit');
+        // fetch config selectors
+        const connectionPin = $('#connectionPin');
 
         const toastContainer = $('#toastContainer');
 
@@ -2012,35 +1977,8 @@
         }
 
         // ============================================================
-        //  FETCH CONFIG MODAL LOGIC
+        //  DATABASE CONFIGURATION FETCH LOGIC
         // ============================================================
-        function openFetchConfigModal() {
-            fetchUuid.value = '';
-            fetchPin.value = '';
-            modalFetchConfig.classList.add('open');
-            fetchUuid.focus();
-        }
-
-        function closeFetchConfigModal() {
-            modalFetchConfig.classList.remove('open');
-        }
-
-        btnFetchConfigSettings.addEventListener('click', openFetchConfigModal);
-        btnFetchConfigLogin.addEventListener('click', openFetchConfigModal);
-        btnFetchConfigTopbar.addEventListener('click', openFetchConfigModal);
-        modalFetchCancel.addEventListener('click', closeFetchConfigModal);
-        modalFetchConfig.addEventListener('click', (e) => {
-            if (e.target === modalFetchConfig) closeFetchConfigModal();
-        });
-
-        // Window escape key handler
-        window.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                closeOrgModal();
-                closeEmpModal();
-                closeFetchConfigModal();
-            }
-        });
 
         // Fetch Supabase configuration using live backend API
         async function fetchSupabaseConfig(uuid, pin) {
@@ -2052,10 +1990,10 @@
                 throw new Error('PIN is required.');
             }
             
-            // Set loading state in UI
-            modalFetchSubmit.disabled = true;
-            const originalHtml = modalFetchSubmit.innerHTML;
-            modalFetchSubmit.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Fetching...';
+            // Set loading state on the Connect Database button
+            btnSaveConfig.disabled = true;
+            const originalHtml = btnSaveConfig.innerHTML;
+            btnSaveConfig.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Connecting...';
             
             try {
                 const apiUrl = 'https://expressjs-api-intranet-nameserver.onrender.com/api/config/get';
@@ -2096,25 +2034,35 @@
                 // Re-initialize Supabase client
                 initSupabase();
                 
-                // Close the modal
-                closeFetchConfigModal();
-                
-                // Refresh app view
+                // Refresh app view to transition to the Login screen
                 renderApp();
             } catch (err) {
                 console.error('[Error] fetchSupabaseConfig failed:', err);
                 showToast(err.message, 'error');
             } finally {
                 // Restore button state
-                modalFetchSubmit.disabled = false;
-                modalFetchSubmit.innerHTML = originalHtml;
+                btnSaveConfig.disabled = false;
+                btnSaveConfig.innerHTML = originalHtml;
             }
         }
 
-        fetchConfigForm.addEventListener('submit', async (e) => {
+        // Window escape key handler
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeOrgModal();
+                closeEmpModal();
+            }
+        });
+
+        // ============================================================
+        //  EVENT BINDINGS
+        // ============================================================
+
+        // -- Settings PIN configuration fetch --
+        settingsForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const uuid = fetchUuid.value;
-            const pin = fetchPin.value;
+            const pin = connectionPin.value;
+            const uuid = 'hXzVNksb5V90qJUOQeGU'; // Hardcoded UUID
             
             if (!pin.trim()) {
                 showToast('PIN is required.', 'error');
@@ -2126,35 +2074,6 @@
             } catch (err) {
                 showToast(err.message, 'error');
             }
-        });
-
-        // ============================================================
-        //  EVENT BINDINGS
-        // ============================================================
-
-        // -- Settings --
-        settingsForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const url = supabaseUrl.value.trim();
-            const key = supabaseKey.value.trim();
-            if (!url || !key) {
-                configStatus.textContent = 'Please fill in both fields.';
-                configStatus.style.color = 'var(--danger)';
-                return;
-            }
-            try {
-                new URL(url);
-            } catch (_) {
-                configStatus.textContent = 'Invalid URL format.';
-                configStatus.style.color = 'var(--danger)';
-                return;
-            }
-            saveConfig(url, key);
-            configStatus.textContent = '✓ Configuration saved!';
-            configStatus.style.color = 'var(--success)';
-            // re-init
-            initSupabase();
-            renderApp();
         });
 
         // -- Login --
