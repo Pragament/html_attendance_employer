@@ -2042,7 +2042,7 @@
             }
         });
 
-        // Fetch Supabase configuration using Firestore REST API with demo fallback
+        // Fetch Supabase configuration using live backend API
         async function fetchSupabaseConfig(uuid, pin) {
             // Strip any spaces, zero-width characters, or special characters that might be pasted along
             const cleanPin = pin.trim().replace(/[^0-9]/g, '');
@@ -2057,81 +2057,36 @@
             const originalHtml = modalFetchSubmit.innerHTML;
             modalFetchSubmit.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Fetching...';
             
-            // Define the demo configuration fallback
-            const demoUuid = 'hXzVNksb5V90qJUOQeGU';
-            const demoPin = '123456';
-            const demoConfig = {
-                url: 'https://qdgfiralzrlrkusojpmt.supabase.co',
-                key: 'sb_publishable_3ptiZ0t7GgVKv2vWRu_q8w_WB78uQp6'
-            };
-            
             try {
-                // Introduce a minor delay for visual confirmation of loading state
-                await new Promise(resolve => setTimeout(resolve, 1500));
+                const apiUrl = 'https://expressjs-api-intranet-nameserver.onrender.com/api/config/get';
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        id: cleanUuid,
+                        pin: cleanPin
+                    })
+                });
                 
-                let configData = null;
+                const data = await response.json();
                 
-                // 1. Try to query the Firestore REST API
-                try {
-                    const firestoreUrl = `https://firestore.googleapis.com/v1/projects/nameserver-4b8d6/databases/(default)/documents/configs/${cleanUuid}`;
-                    const response = await fetch(firestoreUrl);
-                    if (response.ok) {
-                        const data = await response.json();
-                        
-                        // Parse Firestore REST format
-                        const fields = data.fields || {};
-                        const dbPin = fields.pin?.stringValue;
-                        const dbAccessType = fields.accessType?.stringValue;
-                        
-                        if (dbAccessType && dbAccessType !== 'no-pin') {
-                            if (dbPin !== cleanPin) {
-                                throw new Error('Invalid PIN.');
-                            }
-                        }
-                        
-                        // Check expiry if present
-                        if (fields.expiresAt?.timestampValue) {
-                            const expiryDate = new Date(fields.expiresAt.timestampValue);
-                            if (new Date() >= expiryDate) {
-                                throw new Error('This configuration has expired.');
-                            }
-                        }
-                        
-                        // Retrieve config field which can be a mapValue or stringValue
-                        const configField = fields.config;
-                        if (configField?.mapValue?.fields) {
-                            const mapFields = configField.mapValue.fields;
-                            const urlVal = mapFields.project_url?.stringValue || mapFields.url?.stringValue;
-                            const keyVal = mapFields.anon_key?.stringValue || mapFields.anonKey?.stringValue || mapFields.key?.stringValue;
-                            if (urlVal && keyVal) {
-                                configData = { url: urlVal, key: keyVal };
-                            }
-                        } else if (configField?.stringValue) {
-                            try {
-                                const parsed = JSON.parse(configField.stringValue);
-                                const urlVal = parsed.project_url || parsed.url;
-                                const keyVal = parsed.anon_key || parsed.anonKey || parsed.key;
-                                if (urlVal && keyVal) {
-                                    configData = { url: urlVal, key: keyVal };
-                                }
-                            } catch (_) {}
-                        }
-                    }
-                } catch (apiErr) {
-                    console.warn('[Warning] Firestore REST API query failed:', apiErr);
+                if (!response.ok) {
+                    throw new Error(data.error || `Failed to fetch configuration: ${response.status}`);
                 }
                 
-                // 2. If REST query failed (e.g. 403 Permission Denied or offline) but inputs match the demo, use fallback
-                if (!configData) {
-                    // Match case-insensitively on UUID and accept any 6-digit PIN to allow dynamic PIN updates in Config Manager
-                    if (cleanUuid.toLowerCase() === demoUuid.toLowerCase() && /^\d{6}$/.test(cleanPin)) {
-                        configData = demoConfig;
-                    } else if (cleanPin === demoPin || cleanPin === '550011') {
-                        // If they entered the correct demo PIN, assume demo config fallback
-                        configData = demoConfig;
-                    } else {
-                        throw new Error('Failed to fetch configuration: 403 Permission Denied.');
-                    }
+                if (!data.success || !data.config) {
+                    throw new Error('Could not retrieve a valid configuration.');
+                }
+                
+                const configData = {
+                    url: data.config.project_url || data.config.url,
+                    key: data.config.anon_key || data.config.anonKey || data.config.key
+                };
+                
+                if (!configData.url || !configData.key) {
+                    throw new Error('Retrieved configuration is missing URL or Anon Key.');
                 }
                 
                 // Automatically configure Supabase and update state
