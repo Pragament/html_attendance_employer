@@ -829,6 +829,94 @@
             background: #f3f4f6;
             color: #4b5563;
         }
+
+        /* ----- FETCH CONFIG MODAL (DARK PURPLE/INDIGO) ----- */
+        .modal-fetch-dark {
+            background: #1e1b4b; /* Dark indigo */
+            color: #f8fafc; /* Very light slate */
+            border-radius: var(--radius);
+            max-width: 480px;
+            width: 100%;
+            padding: 36px;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.40);
+            animation: slideUp 0.25s ease;
+            text-align: center;
+            box-sizing: border-box;
+        }
+        .modal-fetch-dark h3 {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 6px;
+            text-align: center;
+        }
+        .modal-fetch-dark .modal-sub {
+            color: #c7d2fe; /* Light indigo */
+            font-size: 0.95rem;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+        .modal-fetch-dark .form-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        .modal-fetch-dark .form-group label {
+            color: #e0e7ff;
+            font-weight: 500;
+            display: block;
+            margin-bottom: 6px;
+        }
+        .modal-fetch-dark .form-group input {
+            background: #312e81; /* Indigo 900 */
+            border: 1px solid #4338ca;
+            color: #ffffff;
+            border-radius: 8px;
+            padding: 10px 12px;
+            width: 100%;
+            box-sizing: border-box;
+            outline: none;
+            transition: border-color var(--transition);
+        }
+        .modal-fetch-dark .form-group input:focus {
+            border-color: #818cf8; /* Light blue/indigo focus */
+        }
+        .modal-fetch-dark .form-group input::placeholder {
+            color: #818cf8;
+        }
+        .modal-fetch-dark .form-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            margin-top: 28px;
+        }
+        .modal-fetch-dark .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #f8fafc;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+        .modal-fetch-dark .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.18);
+        }
+        .modal-fetch-dark .btn-primary {
+            background: #4f46e5;
+            color: #ffffff;
+            border: none;
+        }
+        .modal-fetch-dark .btn-primary:hover {
+            background: #4338ca;
+        }
+        .modal-fetch-dark .btn-primary:disabled {
+            background: #312e81;
+            color: #818cf8;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        .modal-fetch-icon {
+            font-size: 2.5rem;
+            color: #818cf8;
+            margin-bottom: 12px;
+            display: inline-block;
+        }
     </style>
 </head>
 <body>
@@ -854,23 +942,24 @@
 
             <!-- ========== PAGE: SETTINGS ========== -->
             <div class="page active" id="pageSettings">
-                <div class="settings-card">
-                    <h2><i class="fas fa-cog" style="color:var(--primary);margin-right:8px;"></i>Supabase Configuration</h2>
-                    <p class="sub">Enter your Supabase project credentials to connect. They will be saved locally.</p>
+                <div class="settings-card" style="text-align: center;">
+                    <h2><i class="fas fa-key" style="color:var(--primary);margin-right:8px;"></i>Supabase Connection</h2>
+                    <p class="sub" style="margin-bottom: 24px;">Enter your PIN to configure and connect your database automatically.</p>
+                    
                     <form id="settingsForm">
-                        <div class="form-group">
-                            <label>Supabase URL <span class="required">*</span></label>
-                            <input class="form-control" id="supabaseUrl" placeholder="https://your-project.supabase.co" required />
+                        <div class="form-group" style="text-align: left; max-width: 320px; margin: 0 auto 20px auto;">
+                            <label style="font-weight: 500; display: block; margin-bottom: 6px; color: var(--gray-700);">Connection PIN <span class="required">*</span></label>
+                            <input class="form-control" type="password" id="connectionPin" placeholder="Enter 6-digit PIN" maxlength="6" required style="text-align: center; font-size: 18px; letter-spacing: 6px;" />
                         </div>
-                        <div class="form-group">
-                            <label>Supabase Anon Key <span class="required">*</span></label>
-                            <input class="form-control" id="supabaseKey" placeholder="eyJhbGciOiJIUzI1NiIs..." required />
-                        </div>
-                        <button type="submit" class="btn-primary w-full" style="justify-content:center;" id="btnSaveConfig">
-                            <i class="fas fa-save"></i> Save &amp; Connect
+                        <button type="submit" class="btn-primary w-full" id="btnSaveConfig" style="justify-content:center; max-width: 320px; margin: 0 auto; padding: 12px; font-size: 15px;">
+                            <i class="fas fa-plug"></i> Connect Database
                         </button>
                     </form>
-                    <div id="configStatus" class="mt-16 text-sm text-center" style="color:var(--gray-500);"></div>
+                    
+                    <!-- Hidden manual configuration inputs to preserve JavaScript DOM compatibility -->
+                    <input id="supabaseUrl" type="hidden" value="" />
+                    <input id="supabaseKey" type="hidden" value="" />
+                    <div id="configStatus" class="mt-16 text-sm text-center" style="display: none;"></div>
                 </div>
             </div>
 
@@ -1025,6 +1114,8 @@
         </div>
     </div>
 
+
+
     <!-- ===== TOAST CONTAINER ===== -->
     <div class="toast-container" id="toastContainer"></div>
 
@@ -1119,6 +1210,9 @@
         const modalEmpCancel = $('#modalEmpCancel');
         const modalEmpSave = $('#modalEmpSave');
 
+        // fetch config selectors
+        const connectionPin = $('#connectionPin');
+
         const toastContainer = $('#toastContainer');
 
         // ============================================================
@@ -1175,6 +1269,7 @@
                     auth: {
                         autoRefreshToken: true,
                         persistSession: true,
+                        detectSessionInUrl: true, // Prevent concurrent/duplicate auto-exchanges of PKCE code on creation
                         storage: window.localStorage,
                         storageKey: 'empManager_sb_auth',
                     }
@@ -1192,12 +1287,17 @@
         // ============================================================
         async function getSession() {
             if (!STATE.supabase) return null;
-            const { data, error } = await STATE.supabase.auth.getSession();
-            if (error) {
-                console.error('getSession error:', error);
+            try {
+                const { data, error } = await STATE.supabase.auth.getSession();
+                if (error) {
+                    console.error('getSession error:', error);
+                    return null;
+                }
+                return data.session;
+            } catch (err) {
+                console.error('getSession unexpected error:', err);
                 return null;
             }
-            return data.session;
         }
 
         async function signInWithGoogle() {
@@ -1206,10 +1306,14 @@
                 return;
             }
             loginStatus.textContent = 'Redirecting to Google...';
+            let redirectUrl = window.location.origin + window.location.pathname;
+            if (redirectUrl.endsWith('index.html')) {
+                redirectUrl = redirectUrl.slice(0, -10); // remove 'index.html' suffix to match whitelist
+            }
             const { error } = await STATE.supabase.auth.signInWithOAuth({
                 provider: 'google',
                 options: {
-                    redirectTo: window.location.origin + window.location.pathname,
+                    redirectTo: redirectUrl,
                 },
             });
             if (error) {
@@ -1410,7 +1514,7 @@
             if (el) el.classList.add('active');
         }
 
-        function renderApp() {
+        async function renderApp() {
             const cfg = loadConfig();
             if (!cfg) {
                 topbar.style.display = 'none';
@@ -1422,21 +1526,23 @@
                 initSupabase();
             }
             // check session
-            getSession().then(session => {
+            try {
+                const session = await getSession();
                 STATE.session = session;
                 if (session) {
                     topbar.style.display = 'flex';
                     userEmail.textContent = session.user?.email || 'User';
-                    renderDashboard();
+                    await renderDashboard();
                 } else {
                     topbar.style.display = 'none';
                     showPage('pageLogin');
                     loginStatus.textContent = '';
                 }
-            }).catch(() => {
+            } catch (err) {
+                console.error('Session retrieval failed:', err);
                 topbar.style.display = 'none';
                 showPage('pageLogin');
-            });
+            }
         }
 
         // ---- RENDER DASHBOARD ----
@@ -1817,6 +1923,9 @@
         // ============================================================
         function openEmpModal(id = null, employeeId = '', name = '', role = '') {
             STATE.isEditingEmp = !!id;
+            const labelPassword = empFormPassword.previousElementSibling;
+            const labelPin = empFormPin.previousElementSibling;
+
             if (id) {
                 empFormId.value = id;
                 empFormEmployeeId.value = employeeId;
@@ -1824,6 +1933,15 @@
                 empFormRole.value = role;
                 empFormPassword.value = '';
                 empFormPin.value = '';
+                
+                empFormPassword.required = false;
+                empFormPin.required = false;
+                empFormPassword.placeholder = 'Leave blank to keep current password';
+                empFormPin.placeholder = 'Leave blank to keep current PIN';
+                
+                if (labelPassword) labelPassword.innerHTML = 'Password';
+                if (labelPin) labelPin.innerHTML = '4‑Digit PIN';
+
                 modalEmpTitle.textContent = 'Edit Employee';
                 modalEmpSub.textContent = 'Update employee details. Leave password/PIN blank to keep unchanged.';
                 modalEmpSave.innerHTML = '<i class="fas fa-save"></i> Update';
@@ -1834,6 +1952,15 @@
                 empFormRole.value = '';
                 empFormPassword.value = '';
                 empFormPin.value = '';
+
+                empFormPassword.required = true;
+                empFormPin.required = true;
+                empFormPassword.placeholder = 'At least 6 characters';
+                empFormPin.placeholder = 'e.g. 1234';
+
+                if (labelPassword) labelPassword.innerHTML = 'Password <span class="required">*</span>';
+                if (labelPin) labelPin.innerHTML = '4‑Digit PIN <span class="required">*</span>';
+
                 modalEmpTitle.textContent = 'New Employee';
                 modalEmpSub.textContent = 'Enter the employee\'s details.';
                 modalEmpSave.innerHTML = '<i class="fas fa-user-plus"></i> Create';
@@ -1850,32 +1977,103 @@
         }
 
         // ============================================================
+        //  DATABASE CONFIGURATION FETCH LOGIC
+        // ============================================================
+
+        // Fetch Supabase configuration using live backend API
+        async function fetchSupabaseConfig(uuid, pin) {
+            // Strip any spaces, zero-width characters, or special characters that might be pasted along
+            const cleanPin = pin.trim().replace(/[^0-9]/g, '');
+            const cleanUuid = uuid.trim().replace(/[^a-zA-Z0-9-]/g, '');
+            
+            if (!cleanPin) {
+                throw new Error('PIN is required.');
+            }
+            
+            // Set loading state on the Connect Database button
+            btnSaveConfig.disabled = true;
+            const originalHtml = btnSaveConfig.innerHTML;
+            btnSaveConfig.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Connecting...';
+            
+            try {
+                const apiUrl = 'https://expressjs-api-intranet-nameserver.onrender.com/api/config/get';
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        id: cleanUuid,
+                        pin: cleanPin
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error || `Failed to fetch configuration: ${response.status}`);
+                }
+                
+                if (!data.success || !data.config) {
+                    throw new Error('Could not retrieve a valid configuration.');
+                }
+                
+                const configData = {
+                    url: data.config.project_url || data.config.url,
+                    key: data.config.anon_key || data.config.anonKey || data.config.key
+                };
+                
+                if (!configData.url || !configData.key) {
+                    throw new Error('Retrieved configuration is missing URL or Anon Key.');
+                }
+                
+                // Automatically configure Supabase and update state
+                saveConfig(configData.url, configData.key);
+                showToast('Supabase configuration updated successfully!', 'success');
+                
+                // Re-initialize Supabase client
+                initSupabase();
+                
+                // Refresh app view to transition to the Login screen
+                renderApp();
+            } catch (err) {
+                console.error('[Error] fetchSupabaseConfig failed:', err);
+                showToast(err.message, 'error');
+            } finally {
+                // Restore button state
+                btnSaveConfig.disabled = false;
+                btnSaveConfig.innerHTML = originalHtml;
+            }
+        }
+
+        // Window escape key handler
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeOrgModal();
+                closeEmpModal();
+            }
+        });
+
+        // ============================================================
         //  EVENT BINDINGS
         // ============================================================
 
-        // -- Settings --
-        settingsForm.addEventListener('submit', (e) => {
+        // -- Settings PIN configuration fetch --
+        settingsForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const url = supabaseUrl.value.trim();
-            const key = supabaseKey.value.trim();
-            if (!url || !key) {
-                configStatus.textContent = 'Please fill in both fields.';
-                configStatus.style.color = 'var(--danger)';
+            const pin = connectionPin.value;
+            const uuid = 'hXzVNksb5V90qJUOQeGU'; // Hardcoded UUID
+            
+            if (!pin.trim()) {
+                showToast('PIN is required.', 'error');
                 return;
             }
+            
             try {
-                new URL(url);
-            } catch (_) {
-                configStatus.textContent = 'Invalid URL format.';
-                configStatus.style.color = 'var(--danger)';
-                return;
+                await fetchSupabaseConfig(uuid, pin);
+            } catch (err) {
+                showToast(err.message, 'error');
             }
-            saveConfig(url, key);
-            configStatus.textContent = '✓ Configuration saved!';
-            configStatus.style.color = 'var(--success)';
-            // re-init
-            initSupabase();
-            renderApp();
         });
 
         // -- Login --
@@ -1960,15 +2158,23 @@
                 showToast('Name is required.', 'error');
                 return;
             }
-            if (!id && (!password || password.length < 6)) {
+            // For Create mode: password is required
+            if (!id && !password) {
+                showToast('Password is required.', 'error');
+                return;
+            }
+            // If password is provided (in either mode), validate length
+            if (password && password.length < 6) {
                 showToast('Password must be at least 6 characters.', 'error');
                 return;
             }
-            if (!id && !/^[0-9]{4}$/.test(pin)) {
-                showToast('PIN must be exactly 4 digits.', 'error');
+            // For Create mode: PIN is required
+            if (!id && !pin) {
+                showToast('PIN is required.', 'error');
                 return;
             }
-            if (id && pin && !/^[0-9]{4}$/.test(pin)) {
+            // If PIN is provided (in either mode), validate format (exactly 4 digits)
+            if (pin && !/^[0-9]{4}$/.test(pin)) {
                 showToast('PIN must be exactly 4 digits.', 'error');
                 return;
             }
@@ -2012,19 +2218,42 @@
             if (!cfg) return;
             if (!STATE.supabase) initSupabase();
             if (!STATE.supabase) return;
-            const { data, error } = await STATE.supabase.auth.getSession();
-            if (error) {
-                console.error('Auth callback error:', error);
-                return;
-            }
-            if (data.session) {
-                STATE.session = data.session;
-                // Check if URL has hash params from OAuth
-                if (window.location.hash) {
-                    // clean URL
-                    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+
+            const hasHash = window.location.hash && window.location.hash.includes('access_token');
+            const hasQuery = window.location.search && (window.location.search.includes('code=') || window.location.search.includes('error='));
+
+            if (hasHash || hasQuery) {
+                // If there's an OAuth error parameter in the URL redirect, log it, clean URL, and abort
+                if (window.location.search && window.location.search.includes('error=')) {
+                    console.error('OAuth redirect returned error:', window.location.search);
+                    let newUrl = window.location.pathname;
+                    window.history.replaceState(null, '', newUrl);
+                    return;
                 }
-                renderApp();
+
+                const { data, error } = await STATE.supabase.auth.getSession();
+                if (error) {
+                    console.error('Auth callback error:', error);
+                    return;
+                }
+                if (data.session) {
+                    STATE.session = data.session;
+                    // clean URL from OAuth hash/query parameters
+                    let newUrl = window.location.pathname;
+                    if (window.location.search) {
+                        const params = new URLSearchParams(window.location.search);
+                        params.delete('code');
+                        params.delete('state');
+                        params.delete('error');
+                        params.delete('error_description');
+                        params.delete('error_code');
+                        const queryStr = params.toString();
+                        if (queryStr) {
+                            newUrl += '?' + queryStr;
+                        }
+                    }
+                    window.history.replaceState(null, '', newUrl);
+                }
             }
         }
 
@@ -2042,24 +2271,8 @@
                 topbar.style.display = 'none';
             }
 
-            // If already has config but no session, show login
-            if (cfg && !STATE.session) {
-                topbar.style.display = 'none';
-                showPage('pageLogin');
-            } else if (cfg && STATE.session) {
-                topbar.style.display = 'flex';
-                userEmail.textContent = STATE.session.user?.email || 'User';
-                renderDashboard();
-            }
-
-            // Handle OAuth redirect hash cleanup (after page load)
-            if (window.location.hash && window.location.hash.includes('access_token')) {
-                // Supabase already handled it via getSession
-                // Just clean the URL
-                setTimeout(() => {
-                    window.history.replaceState(null, '', window.location.pathname + window.location.search);
-                }, 500);
-            }
+            // Delegate routing and dashboard rendering entirely to renderApp
+            await renderApp();
         }
 
         // Run
