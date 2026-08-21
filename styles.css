@@ -394,6 +394,12 @@ a {
     margin-top: 2px;
     color: var(--gray-800);
 }
+.org-access-role {
+    margin-top: 8px;
+    color: var(--gray-500);
+    font-size: 0.8rem;
+    text-transform: capitalize;
+}
 .org-card .org-actions {
     display: flex;
     gap: 6px;
@@ -530,6 +536,11 @@ table tr:hover td {
 .badge-role {
     background: var(--primary-light);
     color: var(--primary);
+}
+.badge-system-role {
+    background: #ecfdf5;
+    color: #047857;
+    text-transform: capitalize;
 }
 .emp-id {
     font-weight: 600;

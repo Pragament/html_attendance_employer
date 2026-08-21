@@ -11,6 +11,9 @@ const STATE = {
     organizations: [],
     employees: [],
     roles: [], // for autocomplete
+    employeeMemberships: [],
+    accessMode: 'employer', // employer | employee
+    currentMembership: null,
     currentOrgId: null, // which org we're viewing
     isEditingOrg: false,
     isEditingEmp: false,
@@ -80,6 +83,8 @@ const empFormId = $('#empFormId');
 const empFormEmployeeId = $('#empFormEmployeeId');
 const empFormName = $('#empFormName');
 const empFormRole = $('#empFormRole');
+const empFormEmail = $('#empFormEmail');
+const empFormSystemRole = $('#empFormSystemRole');
 const empFormPassword = $('#empFormPassword');
 const empFormPin = $('#empFormPin');
 const roleDatalist = $('#roleDatalist');
@@ -204,6 +209,10 @@ async function signOut() {
     if (!STATE.supabase) return;
     await STATE.supabase.auth.signOut();
     STATE.session = null;
+    STATE.employeeMemberships = [];
+    STATE.accessMode = 'employer';
+    STATE.currentMembership = null;
+    STATE.currentOrgId = null;
     renderApp();
 }
 
@@ -214,11 +223,79 @@ function getEmployerId() {
     return STATE.session?.user?.id || null;
 }
 
+function getSignedInEmail() {
+    return (STATE.session?.user?.email || '').trim().toLowerCase();
+}
+
+function normalizeSystemRole(role) {
+    const normalized = (role || 'viewer').trim().toLowerCase();
+    return ['viewer', 'editor', 'admin'].includes(normalized) ? normalized : 'viewer';
+}
+
+function isEmployerMode() {
+    return STATE.accessMode === 'employer';
+}
+
+function getMembershipForOrg(orgId) {
+    if (isEmployerMode()) return null;
+    return STATE.employeeMemberships.find(member => member.organization_id === orgId) || null;
+}
+
+function getCurrentSystemRole() {
+    if (isEmployerMode()) return 'admin';
+    return normalizeSystemRole(STATE.currentMembership?.system_role);
+}
+
+function canManageOrganizations() {
+    return isEmployerMode();
+}
+
+function canManageEmployees() {
+    if (isEmployerMode()) return true;
+    return ['editor', 'admin'].includes(getCurrentSystemRole());
+}
+
+function canManageSystemRoles() {
+    return isEmployerMode() || getCurrentSystemRole() === 'admin';
+}
+
+function canDeleteEmployees() {
+    return canManageSystemRoles();
+}
+
+function canEditEmployee(employee) {
+    if (!canManageEmployees()) return false;
+    if (canManageSystemRoles()) return true;
+    return normalizeSystemRole(employee?.system_role) === 'viewer';
+}
+
+function canViewEmployees() {
+    return canManageEmployees();
+}
+
+function canViewAttendance() {
+    if (isEmployerMode()) return true;
+    return ['viewer', 'admin'].includes(getCurrentSystemRole());
+}
+
+function getDefaultTab() {
+    if (canViewEmployees()) return 'employees';
+    if (canViewAttendance()) return 'attendance';
+    return null;
+}
+
+function hasAnyOrgAccess() {
+    return canViewEmployees() || canViewAttendance();
+}
+
 // ---- ORGANIZATIONS ----
 async function fetchOrganizations() {
     const uid = getEmployerId();
     if (!uid || !STATE.supabase) return [];
-    const { data, error } = await STATE.supabase
+    STATE.employeeMemberships = [];
+    STATE.accessMode = 'employer';
+
+    const { data: ownedOrgs, error } = await STATE.supabase
         .from('organizations')
         .select('*')
         .eq('employer_id', uid)
@@ -226,9 +303,47 @@ async function fetchOrganizations() {
     if (error) {
         console.error('fetchOrganizations error:', error);
         showToast('Error loading organizations: ' + error.message, 'error');
+    }
+    if (ownedOrgs && ownedOrgs.length > 0) {
+        return ownedOrgs;
+    }
+
+    const email = getSignedInEmail();
+    if (!email) return [];
+
+    const { data: memberships, error: membershipError } = await STATE.supabase
+        .from('employees')
+        .select('id, organization_id, employee_id, name, role, email, system_role')
+        .ilike('email', email);
+    if (membershipError) {
+        console.error('fetch employee memberships error:', membershipError);
+        showToast('Error loading employee access: ' + membershipError.message, 'error');
         return [];
     }
-    return data || [];
+
+    STATE.employeeMemberships = (memberships || []).map(member => ({
+        ...member,
+        system_role: normalizeSystemRole(member.system_role),
+    }));
+    if (STATE.employeeMemberships.length === 0) {
+        return [];
+    }
+
+    STATE.accessMode = 'employee';
+    const orgIds = [...new Set(STATE.employeeMemberships.map(member => member.organization_id).filter(Boolean))];
+    if (orgIds.length === 0) return [];
+
+    const { data: employeeOrgs, error: orgError } = await STATE.supabase
+        .from('organizations')
+        .select('*')
+        .in('id', orgIds)
+        .order('created_at', { ascending: true });
+    if (orgError) {
+        console.error('fetch employee organizations error:', orgError);
+        showToast('Error loading employee organizations: ' + orgError.message, 'error');
+        return [];
+    }
+    return employeeOrgs || [];
 }
 
 async function createOrganization(orgCode, orgName) {
@@ -319,11 +434,12 @@ async function ensureRole(orgId, roleName) {
     }
 }
 
-async function createEmployee(orgId, employeeId, name, role, password, pin) {
+async function createEmployee(orgId, employeeId, name, role, email, systemRole, password, pin) {
     if (!STATE.supabase) throw new Error('No client');
     const salt = bcrypt.genSaltSync(10);
     const pwdHash = bcrypt.hashSync(password, salt);
     const pinHash = bcrypt.hashSync(pin, salt);
+    const normalizedEmail = email ? email.trim().toLowerCase() : null;
     const { data, error } = await STATE.supabase
         .from('employees')
         .insert({
@@ -331,6 +447,8 @@ async function createEmployee(orgId, employeeId, name, role, password, pin) {
             employee_id: employeeId.trim(),
             name: name.trim(),
             role: role ? role.trim() : null,
+            email: normalizedEmail || null,
+            system_role: normalizeSystemRole(systemRole),
             password_hash: pwdHash,
             pin_hash: pinHash,
         })
@@ -344,12 +462,15 @@ async function createEmployee(orgId, employeeId, name, role, password, pin) {
     return data;
 }
 
-async function updateEmployee(id, orgId, employeeId, name, role, password, pin) {
+async function updateEmployee(id, orgId, employeeId, name, role, email, systemRole, password, pin) {
     if (!STATE.supabase) throw new Error('No client');
+    const normalizedEmail = email ? email.trim().toLowerCase() : null;
     const payload = {
         employee_id: employeeId.trim(),
         name: name.trim(),
         role: role ? role.trim() : null,
+        email: normalizedEmail || null,
+        system_role: normalizeSystemRole(systemRole),
         updated_at: new Date().toISOString(),
     };
     // only hash & update password/pin if provided
@@ -425,28 +546,36 @@ async function renderApp() {
 
 // ---- RENDER DASHBOARD ----
 async function renderDashboard() {
+    STATE.currentOrgId = null;
+    STATE.currentMembership = null;
     showPage('pageDashboard');
     const orgs = await fetchOrganizations();
     STATE.organizations = orgs;
+    btnAddOrg.style.display = canManageOrganizations() ? 'inline-flex' : 'none';
     renderOrgList(orgs);
 }
 
 function renderOrgList(orgs) {
     if (!orgs || orgs.length === 0) {
+        const emptyText = isEmployerMode()
+            ? 'No organizations yet. Create your first one!'
+            : 'No employee access found for this Google account.';
         orgList.innerHTML = `
             <div class="empty-state">
                 <i class="fas fa-building"></i>
-                <p>No organizations yet. Create your first one!</p>
+                <p>${emptyText}</p>
             </div>
         `;
         return;
     }
     let html = '<div class="org-grid">';
     orgs.forEach(org => {
-        html += `
-            <div class="org-card" data-org-id="${org.id}">
-                <div class="org-code">${org.org_code}</div>
-                <div class="org-name">${escHtml(org.org_name)}</div>
+        const membership = getMembershipForOrg(org.id);
+        const systemRoleHtml = membership
+            ? `<div class="org-access-role">System role: ${escHtml(normalizeSystemRole(membership.system_role))}</div>`
+            : '';
+        const orgActionsHtml = canManageOrganizations()
+            ? `
                 <div class="org-actions">
                     <button class="btn-edit-org" data-id="${org.id}" data-code="${org.org_code}" data-name="${escHtml(org.org_name)}">
                         <i class="fas fa-edit"></i> Edit
@@ -455,6 +584,14 @@ function renderOrgList(orgs) {
                         <i class="fas fa-trash"></i> Delete
                     </button>
                 </div>
+            `
+            : '';
+        html += `
+            <div class="org-card" data-org-id="${org.id}">
+                <div class="org-code">${org.org_code}</div>
+                <div class="org-name">${escHtml(org.org_name)}</div>
+                ${systemRoleHtml}
+                ${orgActionsHtml}
             </div>
         `;
     });
@@ -502,12 +639,22 @@ function renderOrgList(orgs) {
 // ---- TABS SWITCHING ----
 function switchTab(tab) {
     if (tab === 'employees') {
+        if (!canViewEmployees()) {
+            showToast('Your role does not allow employee management.', 'error');
+            if (canViewAttendance()) switchTab('attendance');
+            return;
+        }
         tabEmployees.classList.add('active');
         tabAttendance.classList.remove('active');
         employeeSection.style.display = 'block';
         attendanceSection.style.display = 'none';
-        btnAddEmployee.style.display = 'inline-flex';
+        btnAddEmployee.style.display = canManageEmployees() ? 'inline-flex' : 'none';
     } else if (tab === 'attendance') {
+        if (!canViewAttendance()) {
+            showToast('Your role does not allow attendance access.', 'error');
+            if (canViewEmployees()) switchTab('employees');
+            return;
+        }
         tabEmployees.classList.remove('active');
         tabAttendance.classList.add('active');
         employeeSection.style.display = 'none';
@@ -664,27 +811,40 @@ function renderAttendanceList(employees, records) {
 // ---- VIEW ORGANIZATION (employees) ----
 async function viewOrganization(orgId) {
     STATE.currentOrgId = orgId;
+    STATE.currentMembership = getMembershipForOrg(orgId);
     const org = STATE.organizations.find(o => o.id === orgId);
     if (!org) {
         showToast('Organization not found.', 'error');
         return;
     }
+    if (!hasAnyOrgAccess()) {
+        showToast('You do not have access to this organization.', 'error');
+        return;
+    }
     orgDetailTitle.innerHTML =
         `<i class="fas fa-users section-title-icon"></i>${escHtml(org.org_name)}`;
-    orgDetailSub.textContent = `Code: ${org.org_code} · Manage employees`;
+    const modeText = isEmployerMode()
+        ? 'Manage employees and attendance'
+        : `${getCurrentSystemRole()} access`;
+    orgDetailSub.textContent = `Code: ${org.org_code} · ${modeText}`;
 
-    switchTab('employees');
-    showPage('pageOrgDetail');
+    tabEmployees.style.display = canViewEmployees() ? 'inline-flex' : 'none';
+    tabAttendance.style.display = canViewAttendance() ? 'inline-flex' : 'none';
 
     // fetch employees
     const emps = await fetchEmployees(orgId);
     STATE.employees = emps;
     // fetch roles for autocomplete
-    const roles = await fetchRoles(orgId);
+    const roles = canManageEmployees() ? await fetchRoles(orgId) : [];
     STATE.roles = roles;
     updateRoleDatalist(roles);
 
     renderEmployeeList(emps);
+    showPage('pageOrgDetail');
+    const defaultTab = getDefaultTab();
+    if (defaultTab) {
+        switchTab(defaultTab);
+    }
 }
 
 function renderEmployeeList(emps) {
@@ -705,27 +865,44 @@ function renderEmployeeList(emps) {
                         <th>Employee ID</th>
                         <th>Name</th>
                         <th>Role</th>
-                        <th class="actions-cell">Actions</th>
+                        <th>Email</th>
+                        <th>System Role</th>
+                        ${canManageEmployees() ? '<th class="actions-cell">Actions</th>' : ''}
                     </tr>
                 </thead>
                 <tbody>
     `;
     emps.forEach(emp => {
+        const systemRole = normalizeSystemRole(emp.system_role);
+        const rowActions = `
+            ${canEditEmployee(emp) ? `
+                <button class="btn-edit-emp" data-id="${emp.id}" data-empid="${escHtml(emp.employee_id)}" data-name="${escHtml(emp.name)}" data-role="${escHtml(emp.role||'')}" data-email="${escHtml(emp.email||'')}" data-system-role="${escHtml(systemRole)}">
+                    <i class="fas fa-edit"></i> Edit
+                </button>
+            ` : ''}
+            ${canDeleteEmployees() ? `
+                <button class="btn-del-emp" data-id="${emp.id}">
+                    <i class="fas fa-trash"></i> Delete
+                </button>
+            ` : ''}
+        `;
+        const actionsHtml = canManageEmployees()
+            ? `
+                <td class="actions-cell">
+                    <div class="employee-actions employee-actions-end">
+                        ${rowActions || '<span class="text-muted text-sm">Locked</span>'}
+                    </div>
+                </td>
+            `
+            : '';
         html += `
             <tr>
                 <td><span class="emp-id">${escHtml(emp.employee_id)}</span></td>
                 <td><strong>${escHtml(emp.name)}</strong></td>
                 <td>${emp.role ? `<span class="badge badge-role">${escHtml(emp.role)}</span>` : '<span class="badge">—</span>'}</td>
-                <td class="actions-cell">
-                    <div class="employee-actions employee-actions-end">
-                        <button class="btn-edit-emp" data-id="${emp.id}" data-empid="${escHtml(emp.employee_id)}" data-name="${escHtml(emp.name)}" data-role="${escHtml(emp.role||'')}">
-                            <i class="fas fa-edit"></i> Edit
-                        </button>
-                        <button class="btn-del-emp" data-id="${emp.id}">
-                            <i class="fas fa-trash"></i> Delete
-                        </button>
-                    </div>
-                </td>
+                <td>${emp.email ? escHtml(emp.email) : '<span class="badge">—</span>'}</td>
+                <td><span class="badge badge-system-role">${escHtml(systemRole)}</span></td>
+                ${actionsHtml}
             </tr>
         `;
     });
@@ -736,16 +913,27 @@ function renderEmployeeList(emps) {
     employeeList.querySelectorAll('.btn-edit-emp').forEach(btn => {
         btn.addEventListener('click', () => {
             const id = btn.dataset.id;
+            const employee = STATE.employees.find(emp => emp.id === id);
+            if (!canEditEmployee(employee)) {
+                showToast('Your role does not allow editing this employee.', 'error');
+                return;
+            }
             const empId = btn.dataset.empid;
             const name = btn.dataset.name;
             const role = btn.dataset.role;
-            openEmpModal(id, empId, name, role);
+            const email = btn.dataset.email;
+            const systemRole = btn.dataset.systemRole;
+            openEmpModal(id, empId, name, role, email, systemRole);
         });
     });
 
     // delete
     employeeList.querySelectorAll('.btn-del-emp').forEach(btn => {
         btn.addEventListener('click', async () => {
+            if (!canDeleteEmployees()) {
+                showToast('Only admins can delete employees.', 'error');
+                return;
+            }
             const id = btn.dataset.id;
             if (!confirm('Delete this employee?')) return;
             try {
@@ -799,7 +987,7 @@ function closeOrgModal() {
 // ============================================================
 //  EMP MODAL
 // ============================================================
-function openEmpModal(id = null, employeeId = '', name = '', role = '') {
+function openEmpModal(id = null, employeeId = '', name = '', role = '', email = '', systemRole = 'viewer') {
     STATE.isEditingEmp = !!id;
     const labelPassword = empFormPassword.previousElementSibling;
     const labelPin = empFormPin.previousElementSibling;
@@ -809,11 +997,14 @@ function openEmpModal(id = null, employeeId = '', name = '', role = '') {
         empFormEmployeeId.value = employeeId;
         empFormName.value = name;
         empFormRole.value = role;
+        empFormEmail.value = email;
+        empFormSystemRole.value = normalizeSystemRole(systemRole);
         empFormPassword.value = '';
         empFormPin.value = '';
-        
+
         empFormPassword.required = false;
         empFormPin.required = false;
+        empFormSystemRole.disabled = !canManageSystemRoles();
         empFormPassword.placeholder = 'Leave blank to keep current password';
         empFormPin.placeholder = 'Leave blank to keep current PIN';
         
@@ -828,11 +1019,14 @@ function openEmpModal(id = null, employeeId = '', name = '', role = '') {
         empFormEmployeeId.value = '';
         empFormName.value = '';
         empFormRole.value = '';
+        empFormEmail.value = '';
+        empFormSystemRole.value = 'viewer';
         empFormPassword.value = '';
         empFormPin.value = '';
 
         empFormPassword.required = true;
         empFormPin.required = true;
+        empFormSystemRole.disabled = !canManageSystemRoles();
         empFormPassword.placeholder = 'At least 6 characters';
         empFormPin.placeholder = 'e.g. 1234';
 
@@ -961,7 +1155,13 @@ btnGoogleLogin.addEventListener('click', signInWithGoogle);
 btnLogout.addEventListener('click', signOut);
 
 // -- Add Org --
-btnAddOrg.addEventListener('click', () => openOrgModal());
+btnAddOrg.addEventListener('click', () => {
+    if (!canManageOrganizations()) {
+        showToast('Only the organization owner can manage organizations.', 'error');
+        return;
+    }
+    openOrgModal();
+});
 
 // -- Org Modal --
 modalOrgCancel.addEventListener('click', closeOrgModal);
@@ -971,6 +1171,10 @@ modalOrg.addEventListener('click', (e) => {
 
 orgForm.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (!canManageOrganizations()) {
+        showToast('Only the organization owner can manage organizations.', 'error');
+        return;
+    }
     const id = orgFormId.value;
     const code = orgFormCode.value.trim();
     const name = orgFormName.value.trim();
@@ -1010,6 +1214,10 @@ btnAddEmployee.addEventListener('click', () => {
         showToast('No organization selected.', 'error');
         return;
     }
+    if (!canManageEmployees()) {
+        showToast('Your role does not allow employee management.', 'error');
+        return;
+    }
     openEmpModal();
 });
 
@@ -1025,6 +1233,11 @@ empForm.addEventListener('submit', async (e) => {
     const employeeId = empFormEmployeeId.value.trim();
     const name = empFormName.value.trim();
     const role = empFormRole.value.trim();
+    const email = empFormEmail.value.trim();
+    const requestedSystemRole = empFormSystemRole.value;
+    const systemRole = canManageSystemRoles()
+        ? requestedSystemRole
+        : (id ? requestedSystemRole : 'viewer');
     const password = empFormPassword.value;
     const pin = empFormPin.value.trim();
 
@@ -1034,6 +1247,14 @@ empForm.addEventListener('submit', async (e) => {
     }
     if (!name) {
         showToast('Name is required.', 'error');
+        return;
+    }
+    if (email && !empFormEmail.checkValidity()) {
+        showToast('Enter a valid email address.', 'error');
+        return;
+    }
+    if (!['viewer', 'editor', 'admin'].includes(systemRole)) {
+        showToast('Choose a valid system role.', 'error');
         return;
     }
     // For Create mode: password is required
@@ -1062,13 +1283,17 @@ empForm.addEventListener('submit', async (e) => {
         showToast('No organization selected.', 'error');
         return;
     }
+    if (!canManageEmployees()) {
+        showToast('Your role does not allow employee management.', 'error');
+        return;
+    }
 
     try {
         if (id) {
-            await updateEmployee(id, orgId, employeeId, name, role, password, pin);
+            await updateEmployee(id, orgId, employeeId, name, role, email, systemRole, password, pin);
             showToast('Employee updated.');
         } else {
-            await createEmployee(orgId, employeeId, name, role, password, pin);
+            await createEmployee(orgId, employeeId, name, role, email, systemRole, password, pin);
             showToast('Employee created.');
         }
         closeEmpModal();
