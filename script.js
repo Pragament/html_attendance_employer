@@ -21,6 +21,7 @@ const STATE = {
 
 const ATTENDANCE_VIEW = {
     selectedDate: getLocalDateString(new Date()),
+    selectedMonth: getLocalMonthString(new Date()),
     statusFilter: 'all',
     search: '',
     sortBy: 'alerts',
@@ -744,10 +745,22 @@ function getLocalDateString(date) {
     return `${year}-${month}-${day}`;
 }
 
+function getLocalMonthString(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    return `${year}-${month}`;
+}
+
 function addDays(dateStr, days) {
     const date = new Date(`${dateStr}T00:00:00`);
     date.setDate(date.getDate() + days);
     return getLocalDateString(date);
+}
+
+function addMonths(monthStr, months) {
+    const date = new Date(`${monthStr}-01T00:00:00`);
+    date.setMonth(date.getMonth() + months);
+    return getLocalMonthString(date);
 }
 
 function formatDisplayDate(dateStr) {
@@ -757,6 +770,15 @@ function formatDisplayDate(dateStr) {
         weekday: 'short',
         month: 'short',
         day: 'numeric',
+        year: 'numeric',
+    });
+}
+
+function formatMonthLabel(monthStr) {
+    if (!monthStr) return 'Selected month';
+    const date = new Date(`${monthStr}-01T00:00:00`);
+    return date.toLocaleDateString(undefined, {
+        month: 'long',
         year: 'numeric',
     });
 }
@@ -835,6 +857,60 @@ function getAttendanceSummary(rows) {
     return { total, present, punchedIn, halfDay, absent, alerts, presentRate };
 }
 
+function getMonthAttendanceRows(employees, records, selectedMonth) {
+    return employees.map(emp => {
+        const allRecords = records.filter(r => r.employee_id === emp.id);
+        const monthRecords = allRecords.filter(r => r.date && r.date.startsWith(selectedMonth));
+        const attendedDates = new Set(monthRecords.filter(r => r.punch_in_time).map(r => r.date));
+        const halfDays = monthRecords.filter(r => getAttendanceStatus(r) === 'Half Day').length;
+        const openPunches = monthRecords.filter(r => r.punch_in_time && !r.punch_out_time).length;
+        const reasonEntries = monthRecords.filter(r => r.punch_out_reason).length;
+        const missingPunchIns = monthRecords.filter(r => !r.punch_in_time).length;
+        const latestRecord = monthRecords
+            .slice()
+            .sort((a, b) => String(b.date).localeCompare(String(a.date)))
+            [0];
+        const alertScore = (monthRecords.length === 0 ? 8 : 0) + halfDays + openPunches + missingPunchIns + reasonEntries;
+
+        return {
+            emp,
+            monthRecords,
+            attendedDays: attendedDates.size,
+            halfDays,
+            openPunches,
+            reasonEntries,
+            missingPunchIns,
+            latestDate: latestRecord && latestRecord.date ? latestRecord.date : '',
+            alertScore,
+        };
+    }).sort((a, b) => b.alertScore - a.alertScore || String(a.emp.name).localeCompare(String(b.emp.name)));
+}
+
+function getFilteredMonthRows(rows) {
+    const query = ATTENDANCE_VIEW.search.trim().toLowerCase();
+    return rows.filter(row => {
+        const searchable = [
+            row.emp.name,
+            row.emp.employee_id,
+            row.emp.role,
+        ].filter(Boolean).join(' ').toLowerCase();
+        return !query || searchable.includes(query);
+    });
+}
+
+function getMonthSummary(rows) {
+    const totalEmployees = rows.length;
+    const activeEmployees = rows.filter(row => row.attendedDays > 0).length;
+    const totalAttendanceDays = rows.reduce((sum, row) => sum + row.attendedDays, 0);
+    const halfDays = rows.reduce((sum, row) => sum + row.halfDays, 0);
+    const openPunches = rows.reduce((sum, row) => sum + row.openPunches, 0);
+    const noRecords = rows.filter(row => row.monthRecords.length === 0).length;
+    const reviewCount = rows.filter(row => row.alertScore > 0).length;
+    const activeRate = totalEmployees ? Math.round((activeEmployees / totalEmployees) * 100) : 0;
+
+    return { totalEmployees, activeEmployees, totalAttendanceDays, halfDays, openPunches, noRecords, reviewCount, activeRate };
+}
+
 function renderSummaryCard(label, value, detail, icon, tone = '') {
     return `
         <div class="attendance-stat ${tone}">
@@ -861,6 +937,97 @@ function renderPatternChips(row) {
             <i class="fas ${icon}"></i> ${escHtml(label)}
         </span>
     `).join('');
+}
+
+function renderMonthSnapshot(monthRows) {
+    const filteredMonthRows = getFilteredMonthRows(monthRows);
+    const monthSummary = getMonthSummary(monthRows);
+    const currentMonth = getLocalMonthString(new Date());
+    const monthLabel = ATTENDANCE_VIEW.selectedMonth === currentMonth ? 'Current Month' : formatMonthLabel(ATTENDANCE_VIEW.selectedMonth);
+    const tableRows = filteredMonthRows.map(row => {
+        const tone = row.monthRecords.length === 0 ? 'danger' :
+            row.openPunches > 0 || row.halfDays > 0 || row.missingPunchIns > 0 ? 'warning' : 'success';
+        const notes = [];
+        if (row.monthRecords.length === 0) notes.push('No records');
+        if (row.openPunches > 0) notes.push(`${row.openPunches} open punch`);
+        if (row.halfDays > 0) notes.push(`${row.halfDays} half day(s)`);
+        if (row.reasonEntries > 0) notes.push(`${row.reasonEntries} reason note(s)`);
+        if (!notes.length) notes.push('Stable');
+
+        return `
+            <tr>
+                <td>
+                    <strong>${escHtml(row.emp.name)}</strong>
+                    <span class="attendance-table-sub">${escHtml(row.emp.employee_id || '')}${row.emp.role ? ` · ${escHtml(row.emp.role)}` : ''}</span>
+                </td>
+                <td>${row.attendedDays}</td>
+                <td>${row.monthRecords.length}</td>
+                <td>${row.halfDays}</td>
+                <td>${row.openPunches}</td>
+                <td>${row.latestDate ? escHtml(row.latestDate) : '—'}</td>
+                <td><span class="attendance-chip ${tone}">${escHtml(notes.join(', '))}</span></td>
+            </tr>
+        `;
+    }).join('');
+
+    return `
+        <section class="attendance-month-snapshot">
+            <div class="attendance-month-header">
+                <div>
+                    <span class="attendance-eyebrow">Month Snapshot</span>
+                    <h3>${escHtml(monthLabel)}</h3>
+                    <p>${escHtml(formatMonthLabel(ATTENDANCE_VIEW.selectedMonth))}</p>
+                </div>
+                <div class="attendance-date-tools">
+                    <button class="btn-secondary btn-sm attendance-month-step" data-step="-1" title="Previous month">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <button class="btn-secondary btn-sm attendance-current-month">
+                        <i class="fas fa-calendar-alt"></i> Current Month
+                    </button>
+                    <input class="form-control attendance-month-input" type="month" value="${escHtml(ATTENDANCE_VIEW.selectedMonth)}" />
+                    <button class="btn-secondary btn-sm attendance-month-step" data-step="1" title="Next month">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                    <button class="btn-secondary btn-sm attendance-month-export">
+                        <i class="fas fa-file-csv"></i> Export Month
+                    </button>
+                </div>
+            </div>
+
+            <div class="attendance-stats attendance-month-stats">
+                ${renderSummaryCard('Active Employees', `${monthSummary.activeRate}%`, `${monthSummary.activeEmployees}/${monthSummary.totalEmployees} had punches`, 'fa-users', 'success')}
+                ${renderSummaryCard('Attendance Days', monthSummary.totalAttendanceDays, 'Unique punched-in dates', 'fa-calendar-check', 'success')}
+                ${renderSummaryCard('Half Days', monthSummary.halfDays, 'Across selected month', 'fa-adjust', 'warning')}
+                ${renderSummaryCard('Open Punches', monthSummary.openPunches, 'Need punch out review', 'fa-clock', 'info')}
+                ${renderSummaryCard('No Records', monthSummary.noRecords, 'Employees inactive this month', 'fa-user-times', 'danger')}
+                ${renderSummaryCard('Review', monthSummary.reviewCount, 'Pattern flags found', 'fa-exclamation-triangle', 'warning')}
+            </div>
+
+            <div class="table-wrap attendance-month-table">
+                <table class="attendance-table">
+                    <thead>
+                        <tr>
+                            <th>Employee</th>
+                            <th>Attended Days</th>
+                            <th>Records</th>
+                            <th>Half Days</th>
+                            <th>Open Punches</th>
+                            <th>Latest</th>
+                            <th>Pattern</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${tableRows || `
+                            <tr>
+                                <td colspan="7">No employees match the current search.</td>
+                            </tr>
+                        `}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    `;
 }
 
 function renderRecordDetail(rec) {
@@ -942,6 +1109,7 @@ function renderAttendanceList(employees, records) {
     const rows = getEmployeeAttendanceRows(employees, records, ATTENDANCE_VIEW.selectedDate);
     const filteredRows = getFilteredAttendanceRows(rows);
     const summary = getAttendanceSummary(rows);
+    const monthRows = getMonthAttendanceRows(employees, records, ATTENDANCE_VIEW.selectedMonth);
     const activeDateLabel = ATTENDANCE_VIEW.selectedDate === today ? 'Today' :
         ATTENDANCE_VIEW.selectedDate === yesterday ? 'Yesterday' : formatDisplayDate(ATTENDANCE_VIEW.selectedDate);
 
@@ -1043,6 +1211,8 @@ function renderAttendanceList(employees, records) {
                 Showing ${filteredRows.length} of ${rows.length} employee(s)
             </div>
 
+            ${renderMonthSnapshot(monthRows)}
+
             <div class="attendance-cards">
                 ${cardsHtml || `
                     <div class="empty-state">
@@ -1137,6 +1307,35 @@ function bindAttendanceDashboardControls() {
     if (exportBtn) {
         exportBtn.addEventListener('click', exportAttendanceCsv);
     }
+
+    attendanceList.querySelectorAll('.attendance-month-step').forEach(btn => {
+        btn.addEventListener('click', () => {
+            ATTENDANCE_VIEW.selectedMonth = addMonths(ATTENDANCE_VIEW.selectedMonth, Number(btn.dataset.step || 0));
+            rerenderAttendanceDashboard();
+        });
+    });
+
+    const currentMonthBtn = attendanceList.querySelector('.attendance-current-month');
+    if (currentMonthBtn) {
+        currentMonthBtn.addEventListener('click', () => {
+            ATTENDANCE_VIEW.selectedMonth = getLocalMonthString(new Date());
+            rerenderAttendanceDashboard();
+        });
+    }
+
+    const monthInput = attendanceList.querySelector('.attendance-month-input');
+    if (monthInput) {
+        monthInput.addEventListener('change', () => {
+            if (!monthInput.value) return;
+            ATTENDANCE_VIEW.selectedMonth = monthInput.value;
+            rerenderAttendanceDashboard();
+        });
+    }
+
+    const monthExportBtn = attendanceList.querySelector('.attendance-month-export');
+    if (monthExportBtn) {
+        monthExportBtn.addEventListener('click', exportMonthAttendanceCsv);
+    }
 }
 
 function csvEscape(value) {
@@ -1182,6 +1381,47 @@ function exportAttendanceCsv() {
     const link = document.createElement('a');
     link.href = url;
     link.download = `attendance-${ATTENDANCE_VIEW.selectedDate}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+}
+
+function exportMonthAttendanceCsv() {
+    const rows = getFilteredMonthRows(
+        getMonthAttendanceRows(STATE.employees, ATTENDANCE_VIEW.records, ATTENDANCE_VIEW.selectedMonth)
+    );
+    const header = [
+        'Month',
+        'Employee Name',
+        'Employee ID',
+        'Role',
+        'Attended Days',
+        'Records',
+        'Half Days',
+        'Open Punches',
+        'Reason Notes',
+        'Missing Punch Ins',
+        'Latest Activity',
+    ];
+    const lines = rows.map(row => [
+        ATTENDANCE_VIEW.selectedMonth,
+        row.emp.name,
+        row.emp.employee_id,
+        row.emp.role || '',
+        row.attendedDays,
+        row.monthRecords.length,
+        row.halfDays,
+        row.openPunches,
+        row.reasonEntries,
+        row.missingPunchIns,
+        row.latestDate,
+    ].map(csvEscape).join(','));
+    const blob = new Blob([[header.map(csvEscape).join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `attendance-month-${ATTENDANCE_VIEW.selectedMonth}.csv`;
     document.body.appendChild(link);
     link.click();
     link.remove();

@@ -900,6 +900,49 @@ input[list]::-webkit-calendar-picker-indicator {
     font-size: 0.84rem;
     font-weight: 600;
 }
+.attendance-month-snapshot {
+    display: grid;
+    gap: 14px;
+    padding: 18px;
+    background: var(--gray-50);
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+}
+.attendance-month-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+.attendance-month-header h3 {
+    font-size: 1.2rem;
+    line-height: 1.2;
+    margin-bottom: 2px;
+}
+.attendance-month-header p {
+    color: var(--gray-500);
+    font-size: 0.9rem;
+}
+.attendance-month-input {
+    width: 146px;
+    padding: 7px 10px;
+    font-size: 0.86rem;
+}
+.attendance-month-stats .attendance-stat {
+    min-height: 86px;
+    background: #fff;
+}
+.attendance-month-table {
+    box-shadow: none;
+}
+.attendance-table-sub {
+    display: block;
+    color: var(--gray-500);
+    font-size: 0.78rem;
+    font-weight: 500;
+    line-height: 1.4;
+    margin-top: 3px;
+}
 .attendance-cards {
     display: grid;
     gap: 14px;
@@ -1140,6 +1183,10 @@ input[list]::-webkit-calendar-picker-indicator {
         align-items: stretch;
         flex-direction: column;
     }
+    .attendance-month-header {
+        align-items: stretch;
+        flex-direction: column;
+    }
     .attendance-date-tools {
         justify-content: flex-start;
     }
@@ -1149,6 +1196,9 @@ input[list]::-webkit-calendar-picker-indicator {
         grid-template-columns: 1fr;
     }
     .attendance-date-input {
+        width: 100%;
+    }
+    .attendance-month-input {
         width: 100%;
     }
     .attendance-card-header {
