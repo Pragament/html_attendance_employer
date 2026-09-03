@@ -19,6 +19,14 @@ const STATE = {
     isEditingEmp: false,
 };
 
+const ATTENDANCE_VIEW = {
+    selectedDate: getLocalDateString(new Date()),
+    statusFilter: 'all',
+    search: '',
+    sortBy: 'alerts',
+    records: [],
+};
+
 // ============================================================
 //  DOM REFS
 // ============================================================
@@ -288,6 +296,11 @@ function hasAnyOrgAccess() {
     return canViewEmployees() || canViewAttendance();
 }
 
+function isMissingEmployeeAccessColumns(error) {
+    const message = (error?.message || '').toLowerCase();
+    return message.includes('employees.email') || message.includes('employees.system_role');
+}
+
 // ---- ORGANIZATIONS ----
 async function fetchOrganizations() {
     const uid = getEmployerId();
@@ -317,7 +330,11 @@ async function fetchOrganizations() {
         .ilike('email', email);
     if (membershipError) {
         console.error('fetch employee memberships error:', membershipError);
-        showToast('Error loading employee access: ' + membershipError.message, 'error');
+        if (isMissingEmployeeAccessColumns(membershipError)) {
+            showToast('Employee email login needs the database migration. Add employees.email and employees.system_role in Supabase.', 'error');
+        } else {
+            showToast('Error loading employee access: ' + membershipError.message, 'error');
+        }
         return [];
     }
 
@@ -690,6 +707,7 @@ async function loadAndRenderAttendance(orgId) {
         </div>
     `;
     const records = await fetchAttendance(orgId);
+    ATTENDANCE_VIEW.records = records;
     renderAttendanceList(STATE.employees, records);
 }
 
@@ -704,11 +722,208 @@ function getAttendanceStatus(rec) {
     return 'Present';
 }
 
+function getAttendanceBucket(status) {
+    if (status === 'Present') return 'present';
+    if (status === 'Punched In') return 'punched-in';
+    if (status === 'Half Day') return 'half-day';
+    if (status.startsWith('Present (')) return 'present';
+    return 'absent';
+}
+
 function getStatusBadgeClass(status) {
-    if (status === 'Present') return 'badge-success';
+    if (status === 'Present' || status.startsWith('Present (')) return 'badge-success';
     if (status === 'Punched In') return 'badge-info';
     if (status === 'Half Day') return 'badge-warning';
     return 'badge-secondary';
+}
+
+function getLocalDateString(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function addDays(dateStr, days) {
+    const date = new Date(`${dateStr}T00:00:00`);
+    date.setDate(date.getDate() + days);
+    return getLocalDateString(date);
+}
+
+function formatDisplayDate(dateStr) {
+    if (!dateStr) return 'Selected day';
+    const date = new Date(`${dateStr}T00:00:00`);
+    return date.toLocaleDateString(undefined, {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+    });
+}
+
+function formatTimeValue(value) {
+    return value ? escHtml(value) : '—';
+}
+
+function getPrimaryRecordForDay(records) {
+    if (!records.length) return null;
+    return records.find(rec => rec.punch_in_time || rec.punch_out_time) || records[0];
+}
+
+function getEmployeeAttendanceRows(employees, records, selectedDate) {
+    return employees.map(emp => {
+        const allRecords = records.filter(r => r.employee_id === emp.id);
+        const dayRecords = allRecords.filter(r => r.date === selectedDate);
+        const record = getPrimaryRecordForDay(dayRecords);
+        const status = record ? getAttendanceStatus(record) : 'Absent';
+        const bucket = getAttendanceBucket(status);
+        const recentRecords = allRecords
+            .filter(r => r.date && r.date <= selectedDate)
+            .slice()
+            .sort((a, b) => String(b.date).localeCompare(String(a.date)))
+            .slice(0, 14);
+        const recentMisses = recentRecords.filter(r => !r.punch_in_time).length;
+        const recentHalfDays = recentRecords.filter(r => getAttendanceStatus(r) === 'Half Day').length;
+        const openPunches = allRecords.filter(r => r.punch_in_time && !r.punch_out_time).length;
+        const latestDate = allRecords[0] && allRecords[0].date ? allRecords[0].date : '';
+        const alertScore = (bucket === 'absent' ? 5 : 0) + recentMisses + recentHalfDays + openPunches;
+
+        return {
+            emp,
+            allRecords,
+            dayRecords,
+            record,
+            status,
+            bucket,
+            recentMisses,
+            recentHalfDays,
+            openPunches,
+            latestDate,
+            alertScore,
+        };
+    });
+}
+
+function getFilteredAttendanceRows(rows) {
+    const query = ATTENDANCE_VIEW.search.trim().toLowerCase();
+    return rows.filter(row => {
+        const matchesStatus = ATTENDANCE_VIEW.statusFilter === 'all' || row.bucket === ATTENDANCE_VIEW.statusFilter;
+        const searchable = [
+            row.emp.name,
+            row.emp.employee_id,
+            row.emp.role,
+            row.status,
+        ].filter(Boolean).join(' ').toLowerCase();
+        return matchesStatus && (!query || searchable.includes(query));
+    }).sort((a, b) => {
+        if (ATTENDANCE_VIEW.sortBy === 'name') return String(a.emp.name).localeCompare(String(b.emp.name));
+        if (ATTENDANCE_VIEW.sortBy === 'status') return String(a.status).localeCompare(String(b.status));
+        if (ATTENDANCE_VIEW.sortBy === 'latest') return String(b.latestDate).localeCompare(String(a.latestDate));
+        return b.alertScore - a.alertScore || String(a.emp.name).localeCompare(String(b.emp.name));
+    });
+}
+
+function getAttendanceSummary(rows) {
+    const total = rows.length;
+    const present = rows.filter(row => row.bucket === 'present').length;
+    const punchedIn = rows.filter(row => row.bucket === 'punched-in').length;
+    const halfDay = rows.filter(row => row.bucket === 'half-day').length;
+    const absent = rows.filter(row => row.bucket === 'absent').length;
+    const alerts = rows.filter(row => row.alertScore > 1 || row.bucket === 'absent').length;
+    const presentRate = total ? Math.round(((present + punchedIn + halfDay) / total) * 100) : 0;
+
+    return { total, present, punchedIn, halfDay, absent, alerts, presentRate };
+}
+
+function renderSummaryCard(label, value, detail, icon, tone = '') {
+    return `
+        <div class="attendance-stat ${tone}">
+            <div class="attendance-stat-icon"><i class="fas ${icon}"></i></div>
+            <div>
+                <span class="attendance-stat-label">${escHtml(label)}</span>
+                <strong>${escHtml(String(value))}</strong>
+                <span class="attendance-stat-detail">${escHtml(detail)}</span>
+            </div>
+        </div>
+    `;
+}
+
+function renderPatternChips(row) {
+    const chips = [];
+    if (row.bucket === 'absent') chips.push(['Absent selected day', 'fa-user-times', 'danger']);
+    if (row.openPunches > 0) chips.push([`${row.openPunches} open punch`, 'fa-clock', 'info']);
+    if (row.recentMisses > 0) chips.push([`${row.recentMisses} recent missing day(s)`, 'fa-calendar-times', 'warning']);
+    if (row.recentHalfDays > 0) chips.push([`${row.recentHalfDays} half day(s)`, 'fa-adjust', 'warning']);
+    if (!chips.length) chips.push(['No recent alerts', 'fa-check-circle', 'success']);
+
+    return chips.map(([label, icon, tone]) => `
+        <span class="attendance-chip ${tone}">
+            <i class="fas ${icon}"></i> ${escHtml(label)}
+        </span>
+    `).join('');
+}
+
+function renderRecordDetail(rec) {
+    if (!rec) return '<span class="muted">No punch record for the selected day.</span>';
+
+    const inImg = rec.punch_in_image_url ?
+        `<a href="${escHtml(rec.punch_in_image_url)}" target="_blank" title="View Full Punch-In Image"><img class="attendance-photo" src="${escHtml(rec.punch_in_image_url)}" alt="Punch In" /></a>` : '';
+    const outImg = rec.punch_out_image_url ?
+        `<a href="${escHtml(rec.punch_out_image_url)}" target="_blank" title="View Full Punch-Out Image"><img class="attendance-photo" src="${escHtml(rec.punch_out_image_url)}" alt="Punch Out" /></a>` : '';
+
+    let reasonHtml = '—';
+    if (rec.punch_out_reason) {
+        reasonHtml = `<span class="reason-badge">${escHtml(rec.punch_out_reason)}</span>`;
+        if (rec.punch_out_reason_detail) {
+            reasonHtml += `<span class="reason-detail">${escHtml(rec.punch_out_reason_detail)}</span>`;
+        }
+    }
+
+    return `
+        <div class="attendance-day-grid">
+            <div>
+                <span>Punch In</span>
+                <strong>${formatTimeValue(rec.punch_in_time)} ${inImg}</strong>
+            </div>
+            <div>
+                <span>Punch Out</span>
+                <strong>${formatTimeValue(rec.punch_out_time)} ${outImg}</strong>
+            </div>
+            <div>
+                <span>Reason / Detail</span>
+                <strong>${reasonHtml}</strong>
+            </div>
+        </div>
+    `;
+}
+
+function getRecentRecordRows(row) {
+    const rows = row.allRecords
+        .filter(rec => rec.date && rec.date <= ATTENDANCE_VIEW.selectedDate)
+        .slice()
+        .sort((a, b) => String(b.date).localeCompare(String(a.date)))
+        .slice(0, 5);
+
+    if (!rows.length) {
+        return `
+            <tr>
+                <td colspan="5">No recent history available.</td>
+            </tr>
+        `;
+    }
+
+    return rows.map(rec => {
+        const status = getAttendanceStatus(rec);
+        return `
+            <tr>
+                <td><strong>${escHtml(rec.date || '—')}</strong></td>
+                <td>${formatTimeValue(rec.punch_in_time)}</td>
+                <td>${formatTimeValue(rec.punch_out_time)}</td>
+                <td><span class="badge ${getStatusBadgeClass(status)}">${escHtml(status)}</span></td>
+                <td>${rec.punch_out_reason ? escHtml(rec.punch_out_reason) : '—'}</td>
+            </tr>
+        `;
+    }).join('');
 }
 
 function renderAttendanceList(employees, records) {
@@ -722,33 +937,30 @@ function renderAttendanceList(employees, records) {
         return;
     }
 
-    let html = '';
-    employees.forEach(emp => {
-        // Match attendance only using UUID: r.employee_id = emp.id
-        const empRecords = records.filter(r => r.employee_id === emp.id);
+    const today = getLocalDateString(new Date());
+    const yesterday = addDays(today, -1);
+    const rows = getEmployeeAttendanceRows(employees, records, ATTENDANCE_VIEW.selectedDate);
+    const filteredRows = getFilteredAttendanceRows(rows);
+    const summary = getAttendanceSummary(rows);
+    const activeDateLabel = ATTENDANCE_VIEW.selectedDate === today ? 'Today' :
+        ATTENDANCE_VIEW.selectedDate === yesterday ? 'Yesterday' : formatDisplayDate(ATTENDANCE_VIEW.selectedDate);
 
-        html += `
-            <div class="attendance-card">
-               <div class="attendance-card-header">
-                   <div class="emp-info">
-                       <span class="emp-name">${escHtml(emp.name)}</span>
-                       <span class="emp-id">${escHtml(emp.employee_id)}</span>
-                       ${emp.role ? `<span class="badge badge-role attendance-role">${escHtml(emp.role)}</span>` : ''}
-                   </div>
-                   <div class="attendance-record-count">
-                       ${empRecords.length} record(s)
-                   </div>
+    const cardsHtml = filteredRows.map(row => `
+        <div class="attendance-card ${row.bucket}">
+           <div class="attendance-card-header">
+               <div class="emp-info">
+                   <span class="emp-name">${escHtml(row.emp.name)}</span>
+                   <span class="emp-id">${escHtml(row.emp.employee_id)}</span>
+                   ${row.emp.role ? `<span class="badge badge-role attendance-role">${escHtml(row.emp.role)}</span>` : ''}
                </div>
-        `;
-
-        if (empRecords.length === 0) {
-            html += `
-                <div class="attendance-empty-note">
-                    <i class="fas fa-info-circle"></i> No attendance records found for this employee.
-                </div>
-            `;
-        } else {
-            html += `
+               <div class="attendance-record-count">
+                   <span class="badge ${getStatusBadgeClass(row.status)}">${escHtml(row.status)}</span>
+               </div>
+           </div>
+           ${renderRecordDetail(row.record)}
+           <div class="attendance-pattern-row">${renderPatternChips(row)}</div>
+           <details class="attendance-history">
+                <summary>Recent history (${row.allRecords.length} total record(s))</summary>
                 <div class="table-wrap">
                     <table class="attendance-table">
                         <thead>
@@ -757,55 +969,223 @@ function renderAttendanceList(employees, records) {
                                 <th>Punch In</th>
                                 <th>Punch Out</th>
                                 <th>Status</th>
-                                <th>Reason / Detail</th>
+                                <th>Reason</th>
                             </tr>
                         </thead>
-                        <tbody>
-            `;
-
-            empRecords.forEach(rec => {
-                const dateStr = rec.date || '—';
-                const inTime = rec.punch_in_time ? escHtml(rec.punch_in_time) : '—';
-                const outTime = rec.punch_out_time ? escHtml(rec.punch_out_time) : '—';
-                
-                const inImg = rec.punch_in_image_url ? 
-                    `<a href="${escHtml(rec.punch_in_image_url)}" target="_blank" title="View Full Punch-In Image"><img class="attendance-photo" src="${escHtml(rec.punch_in_image_url)}" alt="Punch In" /></a>` : '';
-                const outImg = rec.punch_out_image_url ? 
-                    `<a href="${escHtml(rec.punch_out_image_url)}" target="_blank" title="View Full Punch-Out Image"><img class="attendance-photo" src="${escHtml(rec.punch_out_image_url)}" alt="Punch Out" /></a>` : '';
-
-                const status = getAttendanceStatus(rec);
-                const badgeClass = getStatusBadgeClass(status);
-
-                let reasonHtml = '—';
-                if (rec.punch_out_reason) {
-                    reasonHtml = `<span class="reason-badge">${escHtml(rec.punch_out_reason)}</span>`;
-                    if (rec.punch_out_reason_detail) {
-                        reasonHtml += `<span class="reason-detail">${escHtml(rec.punch_out_reason_detail)}</span>`;
-                    }
-                }
-
-                html += `
-                    <tr>
-                        <td><strong>${escHtml(dateStr)}</strong></td>
-                        <td>${inTime} ${inImg}</td>
-                        <td>${outTime} ${outImg}</td>
-                        <td><span class="badge ${badgeClass}">${escHtml(status)}</span></td>
-                        <td>${reasonHtml}</td>
-                    </tr>
-                `;
-            });
-
-            html += `
-                        </tbody>
+                        <tbody>${getRecentRecordRows(row)}</tbody>
                     </table>
                 </div>
-            `;
-        }
+           </details>
+        </div>
+    `).join('');
 
-        html += `</div>`; // Close attendance-card
+    attendanceList.innerHTML = `
+        <div class="attendance-dashboard">
+            <div class="attendance-toolbar">
+                <div>
+                    <span class="attendance-eyebrow">Attendance Snapshot</span>
+                    <h3>${escHtml(activeDateLabel)}</h3>
+                    <p>${escHtml(formatDisplayDate(ATTENDANCE_VIEW.selectedDate))}</p>
+                </div>
+                <div class="attendance-date-tools">
+                    <button class="btn-secondary btn-sm attendance-date-step" data-step="-1" title="Previous day">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <button class="btn-secondary btn-sm attendance-today">
+                        <i class="fas fa-calendar-day"></i> Today
+                    </button>
+                    <button class="btn-secondary btn-sm attendance-yesterday">
+                        <i class="fas fa-history"></i> Yesterday
+                    </button>
+                    <input class="form-control attendance-date-input" type="date" value="${escHtml(ATTENDANCE_VIEW.selectedDate)}" />
+                    <button class="btn-secondary btn-sm attendance-date-step" data-step="1" title="Next day">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                    <button class="btn-secondary btn-sm attendance-refresh">
+                        <i class="fas fa-rotate"></i> Refresh
+                    </button>
+                </div>
+            </div>
+
+            <div class="attendance-stats">
+                ${renderSummaryCard('Coverage', `${summary.presentRate}%`, `${summary.present + summary.punchedIn + summary.halfDay}/${summary.total} active`, 'fa-chart-pie', 'success')}
+                ${renderSummaryCard('Present', summary.present, 'Completed punch in/out', 'fa-user-check', 'success')}
+                ${renderSummaryCard('Punched In', summary.punchedIn, 'Missing punch out', 'fa-clock', 'info')}
+                ${renderSummaryCard('Half Day', summary.halfDay, 'Marked half day', 'fa-adjust', 'warning')}
+                ${renderSummaryCard('Absent', summary.absent, 'No selected-day punch', 'fa-user-times', 'danger')}
+                ${renderSummaryCard('Alerts', summary.alerts, 'Needs quick review', 'fa-exclamation-triangle', 'warning')}
+            </div>
+
+            <div class="attendance-filterbar">
+                <div class="attendance-search">
+                    <i class="fas fa-search"></i>
+                    <input class="form-control attendance-search-input" type="search" placeholder="Search employee, ID, role, status" value="${escHtml(ATTENDANCE_VIEW.search)}" />
+                </div>
+                <select class="form-control attendance-status-filter" aria-label="Filter by attendance status">
+                    <option value="all"${ATTENDANCE_VIEW.statusFilter === 'all' ? ' selected' : ''}>All statuses</option>
+                    <option value="present"${ATTENDANCE_VIEW.statusFilter === 'present' ? ' selected' : ''}>Present</option>
+                    <option value="punched-in"${ATTENDANCE_VIEW.statusFilter === 'punched-in' ? ' selected' : ''}>Punched in</option>
+                    <option value="half-day"${ATTENDANCE_VIEW.statusFilter === 'half-day' ? ' selected' : ''}>Half day</option>
+                    <option value="absent"${ATTENDANCE_VIEW.statusFilter === 'absent' ? ' selected' : ''}>Absent</option>
+                </select>
+                <select class="form-control attendance-sort" aria-label="Sort attendance rows">
+                    <option value="alerts"${ATTENDANCE_VIEW.sortBy === 'alerts' ? ' selected' : ''}>Sort: alerts first</option>
+                    <option value="name"${ATTENDANCE_VIEW.sortBy === 'name' ? ' selected' : ''}>Sort: name</option>
+                    <option value="status"${ATTENDANCE_VIEW.sortBy === 'status' ? ' selected' : ''}>Sort: status</option>
+                    <option value="latest"${ATTENDANCE_VIEW.sortBy === 'latest' ? ' selected' : ''}>Sort: latest activity</option>
+                </select>
+                <button class="btn-secondary btn-sm attendance-export">
+                    <i class="fas fa-file-csv"></i> Export CSV
+                </button>
+            </div>
+
+            <div class="attendance-results-meta">
+                Showing ${filteredRows.length} of ${rows.length} employee(s)
+            </div>
+
+            <div class="attendance-cards">
+                ${cardsHtml || `
+                    <div class="empty-state">
+                        <i class="fas fa-filter"></i>
+                        <p>No employees match the selected filters.</p>
+                    </div>
+                `}
+            </div>
+        </div>
+    `;
+
+    bindAttendanceDashboardControls();
+}
+
+function rerenderAttendanceDashboard(focusSearch = false) {
+    renderAttendanceList(STATE.employees, ATTENDANCE_VIEW.records);
+    if (focusSearch) {
+        const searchInput = attendanceList.querySelector('.attendance-search-input');
+        if (searchInput) {
+            searchInput.focus();
+            const end = searchInput.value.length;
+            searchInput.setSelectionRange(end, end);
+        }
+    }
+}
+
+function bindAttendanceDashboardControls() {
+    attendanceList.querySelectorAll('.attendance-date-step').forEach(btn => {
+        btn.addEventListener('click', () => {
+            ATTENDANCE_VIEW.selectedDate = addDays(ATTENDANCE_VIEW.selectedDate, Number(btn.dataset.step || 0));
+            rerenderAttendanceDashboard();
+        });
     });
 
-    attendanceList.innerHTML = html;
+    const todayBtn = attendanceList.querySelector('.attendance-today');
+    if (todayBtn) {
+        todayBtn.addEventListener('click', () => {
+            ATTENDANCE_VIEW.selectedDate = getLocalDateString(new Date());
+            rerenderAttendanceDashboard();
+        });
+    }
+
+    const yesterdayBtn = attendanceList.querySelector('.attendance-yesterday');
+    if (yesterdayBtn) {
+        yesterdayBtn.addEventListener('click', () => {
+            ATTENDANCE_VIEW.selectedDate = addDays(getLocalDateString(new Date()), -1);
+            rerenderAttendanceDashboard();
+        });
+    }
+
+    const dateInput = attendanceList.querySelector('.attendance-date-input');
+    if (dateInput) {
+        dateInput.addEventListener('change', () => {
+            if (!dateInput.value) return;
+            ATTENDANCE_VIEW.selectedDate = dateInput.value;
+            rerenderAttendanceDashboard();
+        });
+    }
+
+    const searchInput = attendanceList.querySelector('.attendance-search-input');
+    if (searchInput) {
+        searchInput.addEventListener('input', () => {
+            ATTENDANCE_VIEW.search = searchInput.value;
+            rerenderAttendanceDashboard(true);
+        });
+    }
+
+    const statusFilter = attendanceList.querySelector('.attendance-status-filter');
+    if (statusFilter) {
+        statusFilter.addEventListener('change', () => {
+            ATTENDANCE_VIEW.statusFilter = statusFilter.value;
+            rerenderAttendanceDashboard();
+        });
+    }
+
+    const sortSelect = attendanceList.querySelector('.attendance-sort');
+    if (sortSelect) {
+        sortSelect.addEventListener('change', () => {
+            ATTENDANCE_VIEW.sortBy = sortSelect.value;
+            rerenderAttendanceDashboard();
+        });
+    }
+
+    const refreshBtn = attendanceList.querySelector('.attendance-refresh');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', () => {
+            if (STATE.currentOrgId) loadAndRenderAttendance(STATE.currentOrgId);
+        });
+    }
+
+    const exportBtn = attendanceList.querySelector('.attendance-export');
+    if (exportBtn) {
+        exportBtn.addEventListener('click', exportAttendanceCsv);
+    }
+}
+
+function csvEscape(value) {
+    const text = value == null ? '' : String(value);
+    return `"${text.replace(/"/g, '""')}"`;
+}
+
+function exportAttendanceCsv() {
+    const rows = getFilteredAttendanceRows(
+        getEmployeeAttendanceRows(STATE.employees, ATTENDANCE_VIEW.records, ATTENDANCE_VIEW.selectedDate)
+    );
+    const header = [
+        'Date',
+        'Employee Name',
+        'Employee ID',
+        'Role',
+        'Status',
+        'Punch In',
+        'Punch Out',
+        'Reason',
+        'Recent Missing Days',
+        'Recent Half Days',
+        'Open Punches',
+    ];
+    const lines = rows.map(row => {
+        const rec = row.record || {};
+        return [
+            ATTENDANCE_VIEW.selectedDate,
+            row.emp.name,
+            row.emp.employee_id,
+            row.emp.role || '',
+            row.status,
+            rec.punch_in_time || '',
+            rec.punch_out_time || '',
+            rec.punch_out_reason || '',
+            row.recentMisses,
+            row.recentHalfDays,
+            row.openPunches,
+        ].map(csvEscape).join(',');
+    });
+    const blob = new Blob([[header.map(csvEscape).join(','), ...lines].join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `attendance-${ATTENDANCE_VIEW.selectedDate}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
 }
 
 // ---- VIEW ORGANIZATION (employees) ----

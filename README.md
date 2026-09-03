@@ -86,6 +86,8 @@ ALTER TABLE employees ENABLE ROW LEVEL SECURITY;
 ALTER TABLE roles ENABLE ROW LEVEL SECURITY;
 ```
 
+For existing projects, you can run the ready-to-use migration at `migrations/add_employee_email_access.sql`.
+
 ### 3. Row Level Security (RLS) Policies
 
 Create policies to ensure owners and employee Google logins only access the right data. The helper function avoids recursive RLS checks when policies need to inspect an employee's system role.
