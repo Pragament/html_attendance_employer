@@ -935,6 +935,26 @@ input[list]::-webkit-calendar-picker-indicator {
 .attendance-month-table {
     box-shadow: none;
 }
+.attendance-sort-header {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    color: inherit;
+    font: inherit;
+    font-weight: 700;
+    text-align: left;
+    text-transform: inherit;
+    letter-spacing: inherit;
+}
+.attendance-sort-header i {
+    color: var(--gray-400);
+    font-size: 0.72rem;
+}
+.attendance-sort-header:hover,
+.attendance-sort-header:hover i {
+    color: var(--primary);
+}
 .attendance-table-sub {
     display: block;
     color: var(--gray-500);

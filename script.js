@@ -25,6 +25,8 @@ const ATTENDANCE_VIEW = {
     statusFilter: 'all',
     search: '',
     sortBy: 'alerts',
+    monthSortBy: 'attendedDays',
+    monthSortDir: 'desc',
     records: [],
 };
 
@@ -888,14 +890,39 @@ function getMonthAttendanceRows(employees, records, selectedMonth) {
 
 function getFilteredMonthRows(rows) {
     const query = ATTENDANCE_VIEW.search.trim().toLowerCase();
-    return rows.filter(row => {
+    return sortMonthRows(rows.filter(row => {
         const searchable = [
             row.emp.name,
             row.emp.employee_id,
             row.emp.role,
         ].filter(Boolean).join(' ').toLowerCase();
         return !query || searchable.includes(query);
+    }));
+}
+
+function sortMonthRows(rows) {
+    const direction = ATTENDANCE_VIEW.monthSortDir === 'asc' ? 1 : -1;
+    const sortedRows = rows.slice().sort((a, b) => {
+        let comparison = 0;
+        if (ATTENDANCE_VIEW.monthSortBy === 'employee') {
+            comparison = String(a.emp.name || '').localeCompare(String(b.emp.name || ''));
+        } else if (ATTENDANCE_VIEW.monthSortBy === 'records') {
+            comparison = a.monthRecords.length - b.monthRecords.length;
+        } else if (ATTENDANCE_VIEW.monthSortBy === 'halfDays') {
+            comparison = a.halfDays - b.halfDays;
+        } else if (ATTENDANCE_VIEW.monthSortBy === 'openPunches') {
+            comparison = a.openPunches - b.openPunches;
+        } else {
+            comparison = a.attendedDays - b.attendedDays;
+        }
+
+        if (comparison === 0) {
+            return String(a.emp.name || '').localeCompare(String(b.emp.name || ''));
+        }
+        return comparison * direction;
     });
+
+    return sortedRows;
 }
 
 function getMonthSummary(rows) {
@@ -937,6 +964,22 @@ function renderPatternChips(row) {
             <i class="fas ${icon}"></i> ${escHtml(label)}
         </span>
     `).join('');
+}
+
+function renderMonthSortHeader(label, sortBy) {
+    const isActive = ATTENDANCE_VIEW.monthSortBy === sortBy;
+    const icon = isActive && ATTENDANCE_VIEW.monthSortDir === 'asc' ? 'fa-sort-up' :
+        isActive ? 'fa-sort-down' : 'fa-sort';
+    const ariaSort = isActive ? (ATTENDANCE_VIEW.monthSortDir === 'asc' ? 'ascending' : 'descending') : 'none';
+
+    return `
+        <th aria-sort="${ariaSort}">
+            <button class="attendance-sort-header" data-month-sort="${escHtml(sortBy)}" type="button">
+                <span>${escHtml(label)}</span>
+                <i class="fas ${icon}"></i>
+            </button>
+        </th>
+    `;
 }
 
 function renderMonthSnapshot(monthRows) {
@@ -1008,11 +1051,11 @@ function renderMonthSnapshot(monthRows) {
                 <table class="attendance-table">
                     <thead>
                         <tr>
-                            <th>Employee</th>
-                            <th>Attended Days</th>
-                            <th>Records</th>
-                            <th>Half Days</th>
-                            <th>Open Punches</th>
+                            ${renderMonthSortHeader('Employee', 'employee')}
+                            ${renderMonthSortHeader('Attended Days', 'attendedDays')}
+                            ${renderMonthSortHeader('Records', 'records')}
+                            ${renderMonthSortHeader('Half Days', 'halfDays')}
+                            ${renderMonthSortHeader('Open Punches', 'openPunches')}
                             <th>Latest</th>
                             <th>Pattern</th>
                         </tr>
@@ -1336,6 +1379,20 @@ function bindAttendanceDashboardControls() {
     if (monthExportBtn) {
         monthExportBtn.addEventListener('click', exportMonthAttendanceCsv);
     }
+
+    attendanceList.querySelectorAll('.attendance-sort-header').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const sortBy = btn.dataset.monthSort;
+            if (!sortBy) return;
+            if (ATTENDANCE_VIEW.monthSortBy === sortBy) {
+                ATTENDANCE_VIEW.monthSortDir = ATTENDANCE_VIEW.monthSortDir === 'asc' ? 'desc' : 'asc';
+            } else {
+                ATTENDANCE_VIEW.monthSortBy = sortBy;
+                ATTENDANCE_VIEW.monthSortDir = sortBy === 'employee' ? 'asc' : 'desc';
+            }
+            rerenderAttendanceDashboard();
+        });
+    });
 }
 
 function csvEscape(value) {
