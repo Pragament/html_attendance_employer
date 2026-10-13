@@ -3,7 +3,14 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="app-version" content="2026.09.22.1" />
+    <meta name="app-version" content="2026.10.13.1" />
+    <meta name="theme-color" content="#4f46e5" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="EmpManager" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="icons/icon-192.png" />
+    <script src="pwa.js?v=2026.10.13.1" defer></script>
     <title>Employer · Employee Manager</title>
 
     <!-- Supabase SDK -->
@@ -17,7 +24,7 @@
     <!-- Google Fonts: Inter -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet" />
 
-    <link rel="stylesheet" href="styles.css?v=2026.09.22.1" />
+    <link rel="stylesheet" href="styles.css?v=2026.10.13.1" />
 </head>
 <body>
 
@@ -36,6 +43,17 @@
                 </button>
             </div>
         </header>
+
+        <aside id="installBanner" class="install-banner" aria-label="Add Employee Manager to your home screen" hidden>
+            <img src="icons/icon-192.png" width="48" height="48" alt="" />
+            <div class="install-copy">
+                <strong>Add Employee Manager to your home screen</strong>
+                <p id="installDescription">Open your employee manager with one tap.</p>
+                <p id="installInstructions" hidden></p>
+            </div>
+            <button type="button" class="btn-primary" id="installApp">Add to home screen</button>
+            <button type="button" class="install-dismiss" id="dismissInstall" aria-label="Dismiss install suggestion">&times;</button>
+        </aside>
 
         <!-- ===== MAIN ===== -->
         <div class="main">
@@ -233,7 +251,7 @@
     <!-- ===== TOAST CONTAINER ===== -->
     <div class="toast-container" id="toastContainer"></div>
 
-    <script src="script.js?v=2026.09.22.1"></script>
+    <script src="script.js?v=2026.10.13.1"></script>
 
 </body>
 </html>

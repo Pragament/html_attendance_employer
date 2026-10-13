@@ -1314,3 +1314,29 @@ input[list]::-webkit-calendar-picker-indicator {
     margin-bottom: 12px;
     display: inline-block;
 }
+
+/* Home screen installation suggestion */
+.install-banner[hidden], .install-banner [hidden] { display: none !important; }
+.install-banner {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 18px;
+    margin-bottom: 20px;
+    background: var(--primary-light);
+    border: 1px solid #c7d2fe;
+    border-radius: var(--radius);
+}
+.install-banner img { border-radius: 12px; flex-shrink: 0; }
+.install-copy { flex: 1; min-width: 0; }
+.install-copy strong { display: block; color: var(--gray-900); }
+.install-copy p { margin-top: 5px; font-size: .9rem; line-height: 1.5; color: var(--gray-600); }
+.install-banner .btn-primary { flex-shrink: 0; }
+.install-dismiss { padding: 6px 10px; font-size: 24px; color: var(--gray-600); }
+.install-dismiss:focus-visible { outline: 2px solid var(--primary); border-radius: 6px; }
+@media (max-width: 600px) {
+    .install-banner { flex-wrap: wrap; gap: 10px; position: relative; padding-right: 40px; }
+    .install-copy { flex-basis: calc(100% - 62px); }
+    .install-banner .btn-primary { margin-left: 58px; }
+    .install-dismiss { position: absolute; top: 8px; right: 5px; }
+}
